@@ -11,6 +11,18 @@ import { fetchItems, ITEMS_TOOL } from './items.mjs'
 // 当前启用的工具定义（首轮随请求下发，供模型决策）
 const TOOL_DEFS = [WEATHER_TOOL, ITEMS_TOOL]
 
+// 常见城市名（用于从用户消息里抽取天气查询的城市，命中即服务端预取，跳过「工具二轮」）
+const CITIES = [
+  '北京', '上海', '广州', '深圳', '杭州', '成都', '武汉', '南京', '西安', '重庆', '天津',
+  '苏州', '青岛', '厦门', '长沙', '郑州', '济南', '合肥', '昆明', '大连', '宁波', '福州',
+  '哈尔滨', '沈阳', '长春', '石家庄', '太原', '南昌', '贵阳', '南宁', '兰州', '海口', '三亚',
+  '香港', '澳门', '台北',
+  '东京', '大阪', '伦敦', '纽约', '巴黎', '新加坡', '首尔', '悉尼', '洛杉矶', '温哥华', '多伦多',
+]
+const CITY_RE = new RegExp(`(${CITIES.join('|')})`)
+// 天气意图关键词（命中则在服务端预取天气并注入上下文，省掉一轮 LLM 往返，压低 Vercel Hobby 10s 超时风险）
+const WEATHER_INTENT_RE = /天气|气温|温[度差]|下雨|下雪|带伞|冷吗|热吗|降温|升温|台风|湿度|风速|几度|多少度|weather|temperature/i
+
 // 工具执行器：name → async (args) => resultObj
 // 在 handleChat 内按请求上下文（如用户位置 location）闭包构造。
 function buildRunners(location) {
@@ -21,7 +33,7 @@ function buildRunners(location) {
 }
 
 // 统一上游聊天补全请求（OpenAI 兼容），返回 fetch Response
-async function callUpstream(messages, withTools) {
+async function callUpstream(messages, withTools, toolDefs = TOOL_DEFS) {
   return fetchWithTimeout(
     `${BASE.replace(/\/$/, '')}/chat/completions`,
     {
@@ -35,7 +47,7 @@ async function callUpstream(messages, withTools) {
         messages,
         temperature: TEMP,
         stream: true,
-        ...(withTools ? { tools: TOOL_DEFS, tool_choice: 'auto' } : {}),
+        ...(withTools ? { tools: toolDefs, tool_choice: 'auto' } : {}),
       }),
       // 仅上游 LLM 请求走代理，不影响本地 /api
       dispatcher: proxyAgent || undefined,
@@ -76,6 +88,32 @@ export async function handleChat(req, res) {
   const location = payload.location || null
   const runners = buildRunners(location)
 
+  // 天气意图预判 + 服务端预取：命中则把天气摘要注入系统提示词，并去掉首轮天气工具，
+  // 让模型直接作答、跳过「工具二轮」——把整体耗时从「LLM1+天气+LLM2」压到「天气+LLM1」，
+  // 避免超过 Vercel Hobby 10s 函数上限被静默腰斩（表现为「问天气没返回」）。
+  const lastUserMsg = (payload.messages || []).filter((m) => m.role === 'user').slice(-1)[0]
+  const weatherIntent = !!lastUserMsg && WEATHER_INTENT_RE.test(lastUserMsg.content || '')
+  let weatherContext = ''
+  let round1Tools = TOOL_DEFS
+  if (weatherIntent) {
+    const cityMatch = (lastUserMsg.content || '').match(CITY_RE)
+    const wArgs = cityMatch ? { city: cityMatch[1] } : location ? { location } : null
+    if (wArgs) {
+      try {
+        const w = await fetchWeather(wArgs)
+        if (w.ok) {
+          weatherContext = `\n[系统天气上下文，请据此直接回答用户，不要再调用天气工具] ${w.summary}`
+          round1Tools = TOOL_DEFS.filter((t) => t.function.name !== WEATHER_TOOL.function.name)
+        }
+      } catch {
+        /* 预取失败 → 保留天气工具，回退到原二轮路径 */
+      }
+    }
+  }
+  const llm1Messages = (payload.messages || []).map((m, i) =>
+    i === 0 && m.role === 'system' && weatherContext ? { ...m, content: m.content + weatherContext } : m,
+  )
+
   // 2) 未配置 → 友好错误（走 SSE 通道，前端统一解析）
   if (!BASE || !KEY || !MODEL) {
     res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8' })
@@ -89,7 +127,7 @@ export async function handleChat(req, res) {
 
   try {
     // 3) 首轮：带 tools，流式转发同时采集工具调用
-    const upstream = await callUpstream(payload.messages || [], true)
+    const upstream = await callUpstream(llm1Messages, true, round1Tools)
     if (!upstream.ok) {
       const errText = await upstream.text()
       res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8' })
