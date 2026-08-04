@@ -8,8 +8,25 @@
 //
 // 健壮性：兼容多种返回结构（裸数组 / {items} / {data} / {results} / {list}），
 // 任何异常都把 HTTP 状态码和原始响应片段带回，便于排障。
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { proxyAgent, pooledAgent } from './config.mjs'
 import { fetchWithTimeout } from './httpUtils.mjs'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+// Vercel 等海外部署直连国内 api.erishen.cn 常被墙/超时，这里内置一份静态清单兜底，
+// 保证「问商品」在任何网络环境下都能答出来（实时性让位于可用性，数据需手动同步）。
+const STATIC_ITEMS_PATH = path.join(__dirname, 'items.static.json')
+
+function readStaticItems() {
+  try {
+    const arr = JSON.parse(fs.readFileSync(STATIC_ITEMS_PATH, 'utf8'))
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
+}
 
 // 已部署地址（如需指向其他实例或子路径，可用 ITEMS_API_BASE 环境变量覆盖）
 const ITEMS_BASE = (process.env.ITEMS_API_BASE || 'https://api.erishen.cn').replace(/\/$/, '')
@@ -22,6 +39,19 @@ function extractItems(parsed) {
   if (parsed && Array.isArray(parsed.results)) return parsed.results
   if (parsed && Array.isArray(parsed.list)) return parsed.list
   return null
+}
+
+// 把商品数组格式化为「序号. 名称 价格（特价）：描述」文本
+function formatItems(items) {
+  return items
+    .map((it, i) => {
+      const name = it.name || '未命名'
+      const price = typeof it.price === 'number' ? `¥${it.price}` : ''
+      const offer = it.is_offer ? '（特价）' : ''
+      const desc = it.description ? `：${it.description}` : ''
+      return `${i + 1}. ${name} ${price}${offer}${desc}`
+    })
+    .join('\n')
 }
 
 // 查询商品/服务清单。
@@ -38,6 +68,13 @@ export async function fetchItems(args = {}, dispatcher = pooledAgent) {
     ? `${ITEMS_BASE}/items/search?keyword=${encodeURIComponent(keyword)}&limit=${limit}`
     : `${ITEMS_BASE}/items/?limit=${limit}`
 
+  // 远程失败时的兜底：用内置静态清单（按关键词过滤、截断到 limit）
+  const fallback = () => {
+    let list = readStaticItems()
+    if (keyword) list = list.filter((it) => (it.name || '').includes(keyword))
+    return list.slice(0, limit)
+  }
+
   try {
     console.log(`[items] 请求 ${url}`)
     const res = await fetchWithTimeout(url, { dispatcher: dispatcher || undefined }, 8000)
@@ -45,28 +82,45 @@ export async function fetchItems(args = {}, dispatcher = pooledAgent) {
     console.log(`[items] 响应 HTTP ${res.status}，body 前 240 字符：${text.slice(0, 240)}`)
 
     if (!res.ok) {
-      return {
-        ok: false,
-        error: `商品服务返回 HTTP ${res.status}`,
-        status: res.status,
-        raw: text.slice(0, 500),
-      }
+      const f = fallback()
+      if (f.length)
+        return {
+          ok: true,
+          count: f.length,
+          summary: formatItems(f),
+          stale: true,
+          note: `远程商品服务返回 HTTP ${res.status}，已回退本地缓存清单`,
+        }
+      return { ok: false, error: `商品服务返回 HTTP ${res.status}`, status: res.status, raw: text.slice(0, 500) }
     }
 
     let parsed = null
     try {
       parsed = JSON.parse(text)
     } catch {
-      return {
-        ok: false,
-        error: '商品服务返回的不是合法 JSON',
-        status: res.status,
-        raw: text.slice(0, 500),
-      }
+      const f = fallback()
+      if (f.length)
+        return {
+          ok: true,
+          count: f.length,
+          summary: formatItems(f),
+          stale: true,
+          note: '远程商品服务返回非法 JSON，已回退本地缓存清单',
+        }
+      return { ok: false, error: '商品服务返回的不是合法 JSON', status: res.status, raw: text.slice(0, 500) }
     }
 
     const items = extractItems(parsed)
     if (!items) {
+      const f = fallback()
+      if (f.length)
+        return {
+          ok: true,
+          count: f.length,
+          summary: formatItems(f),
+          stale: true,
+          note: '远程商品服务返回结构异常，已回退本地缓存清单',
+        }
       return {
         ok: false,
         error: '商品服务返回的数据不是商品列表（也不在 items/data/results/list 字段里）',
@@ -77,17 +131,18 @@ export async function fetchItems(args = {}, dispatcher = pooledAgent) {
     if (items.length === 0) {
       return { ok: true, count: 0, summary: '（接口返回空列表：数据库里可能还没有商品）' }
     }
-
-    const lines = items.map((it, i) => {
-      const name = it.name || '未命名'
-      const price = typeof it.price === 'number' ? `¥${it.price}` : ''
-      const offer = it.is_offer ? '（特价）' : ''
-      const desc = it.description ? `：${it.description}` : ''
-      return `${i + 1}. ${name} ${price}${offer}${desc}`
-    })
-    return { ok: true, count: items.length, summary: lines.join('\n'), raw: items }
+    return { ok: true, count: items.length, summary: formatItems(items), raw: items }
   } catch (e) {
     const isTimeout = e?.name === 'AbortError'
+    const f = fallback()
+    if (f.length)
+      return {
+        ok: true,
+        count: f.length,
+        summary: formatItems(f),
+        stale: true,
+        note: `远程获取失败（${isTimeout ? '超时' : e?.message || String(e)}），已回退本地缓存清单`,
+      }
     return {
       ok: false,
       error: isTimeout ? '商品服务请求超时（上游未响应）' : `商品服务调用失败：${e?.message || String(e)}`,

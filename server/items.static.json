@@ -1,0 +1,32 @@
+[
+  {
+    "name": "独立站搭建 + PayPal 支付集成",
+    "price": 6000.0,
+    "is_offer": false,
+    "description": "跨境独立站从 0 搭建 + PayPal 支付集成：多语言栈电商环境、购物车与结账流程、支付与争议 / 退款对接；含技术 SEO 基础与上线治理。起步价按范围报价"
+  },
+  {
+    "name": "全栈网站开发（含 SEO 优化）",
+    "price": 3000.0,
+    "is_offer": false,
+    "description": "Next.js/React 前端 + FastAPI/Node 后端，响应式官网 / 博客 / 管理后台，含数据库设计与 Docker 部署上线；附带技术 SEO 优化（曾负责 Trip.com Blog 既有流量基础下的技术 SEO 与内容优化；从零起量的能力正在 erishen.cn 实战验证）。AI 辅助构建 + 资深工程把关，起步价按范围报价"
+  },
+  {
+    "name": "微信小程序开发",
+    "price": 5000.0,
+    "is_offer": true,
+    "description": "原生 / Taro + TypeScript 全流程：需求拆解、架构设计、前端实现、后端 API 与微信支付 / 订阅消息集成、上线与审核陪跑。AI 辅助构建 + 资深工程把关，起步价按需求范围报价"
+  },
+  {
+    "name": "AI 应用工程化落地",
+    "price": 8000.0,
+    "is_offer": true,
+    "description": "站在 AI 产出之上做验证治理、质量把关与上线兜底——把你的 AI 辅助成果收敛为可验证、可上线的工程资产（不止交付 DEMO）。按项目报价，联系咨询"
+  },
+  {
+    "name": "后端 API 开发",
+    "price": 4000.0,
+    "is_offer": false,
+    "description": "FastAPI / Node.js：RESTful 接口 + 鉴权 + 数据库建模 + 接口文档 + Docker 部署。起步价按范围报价"
+  }
+]
