@@ -15,10 +15,6 @@ export default function Settings({
   onClearLocation,
   contact,
   onContactChange,
-  modelUrl,
-  onModelUrlChange,
-  modelToken,
-  onModelTokenChange,
 }) {
   const [open, setOpen] = useState(false)
   const textareaRef = useRef(null)
@@ -83,29 +79,6 @@ export default function Settings({
           <p className="settings-hint">
             这是<strong>主人的联系方式</strong>（默认 <code>erishen</code>）。当对方问「怎么联系你 / 你的微信是多少」时，小菲会主动报出这个微信号（仅被问时才说，不刷屏）。
             你在这里修改后，小菲就会报<strong>你填的号</strong>——但只存在你自己的浏览器，不影响其他访客，也不上传。
-          </p>
-
-          <label className="settings-label">模型地址（VRM URL）</label>
-          <input
-            className="settings-input"
-            type="text"
-            value={modelUrl || ''}
-            onChange={(e) => onModelUrlChange && onModelUrlChange(stripControlChars(e.target.value))}
-            placeholder="https://api.erishen.cn/api/models/fireflyMaid.vrm"
-          />
-          <label className="settings-label">模型访问令牌</label>
-          <input
-            className="settings-input"
-            type="password"
-            value={modelToken || ''}
-            onChange={(e) => onModelTokenChange && onModelTokenChange(stripControlChars(e.target.value))}
-            placeholder="仅自定义模型地址需令牌直连时填写"
-          />
-          <p className="settings-hint">
-            当前模型：<b>Firefly</b>（萤火女仆）。该 VRM 的许可为 <code>OnlyAuthor + redistribution=disallow</code>
-            （第三方 VRoid 创作，仅作者可商用 / 再分发），经 <code>api.erishen.cn</code> <b>服务端代理拉取，浏览器无需令牌</b>。
-            上面两项默认留空即用内置地址；只有当你填了<strong>自定义模型地址</strong>且需令牌直连时才填令牌。
-            模型文件不随站点公开分发。
           </p>
 
           <div className="settings-row cache-row">

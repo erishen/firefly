@@ -30,13 +30,13 @@ const TEST_VRM_URL = '/test.vrm'
 //   生产环境走 firefly 自己的服务端函数 /api/model —— 该函数用服务端密钥向
 //   api.erishen.cn 换一个限时签名 URL 再 302 跳回，主密钥只存在于服务端环境变量，
 //   14.5MB 模型不经 Vercel（绕开其 4.5MB 响应体上限），且原始地址不再可裸链。
-//   该 VRM 许可 redistribution=disallow，仅供本人经令牌获取，请勿匿名公开分发。
+//   该 VRM 许可 redistribution=disallow，仅供本人经服务端代理获取，请勿匿名公开分发。
 const FIREFLY_VRM_DEV_URL = '/fireflyMaid.vrm'
 const FIREFLY_VRM_PROD_URL = '/api/model'
 
 // 场景：灯光 / 粒子 / 地面 / 交互状态
 // speakingRef、bubble、onClick、modelSource 由 App 统一持有
-export default function Stage({ speakingRef, bubble, onClick, modelSource = 'avaturn', fireflyModelUrl, modelToken }) {
+export default function Stage({ speakingRef, bubble, onClick, modelSource = 'avaturn' }) {
   const blinkRef = useRef(false)
 
   // 眨眼调度统一在这里跑一次（程序化角色与 RPM 模型共用 blinkRef）
@@ -49,11 +49,8 @@ export default function Stage({ speakingRef, bubble, onClick, modelSource = 'ava
     modelSource === 'test'
       ? TEST_VRM_URL
       : modelSource === 'firefly'
-        ? (fireflyModelUrl || (import.meta.env.DEV ? FIREFLY_VRM_DEV_URL : FIREFLY_VRM_PROD_URL))
+        ? (import.meta.env.DEV ? FIREFLY_VRM_DEV_URL : FIREFLY_VRM_PROD_URL)
         : VRM_AVATAR_URL
-  // 内置 firefly 模型经服务端代理加载（令牌在服务端），不向浏览器传令牌；
-  // 仅当用户在设置面板自定义了模型 URL 时，才用浏览器令牌直连。
-  const vrmToken = modelSource === 'firefly' && fireflyModelUrl ? modelToken : undefined
 
   // 地面柔光：径向渐变贴图，中心亮、边缘透明，自然融入背景（不再是一块硬边圆盘）
   const floorTex = useMemo(() => {
@@ -100,7 +97,6 @@ export default function Stage({ speakingRef, bubble, onClick, modelSource = 'ava
               {modelSource === 'vrm' || modelSource === 'test' || modelSource === 'firefly' ? (
                 <AvatarVRM
                   url={vrmUrl}
-                  token={vrmToken}
                   speakingRef={speakingRef}
                   blinkRef={blinkRef}
                   onClick={onClick}
