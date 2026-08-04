@@ -189,7 +189,12 @@ export async function handleChat(req, res) {
       : /ECONNRESET|fetch failed|certificate|SSL/.test(code + msg)
       ? '（连接被重置/证书错误：上游可能被墙、需代理访问，或需设置 LLM_PROXY）'
       : ''
-    res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8' })
+    // 若响应头尚未发出（如首轮 upstream 调用即抛错）→ 正常以 200 + SSE 错误帧返回；
+    // 若已在流式途中（上游连接中途断开）→ 头已发，只能追加一条 error 事件，不能再 writeHead
+    //   （否则 Node 抛 ERR_HTTP_HEADERS_SENT）。前端 useChat 会捕获并走 onError。
+    if (!res.headersSent) {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8' })
+    }
     sse(res, { error: `代理请求上游失败：${msg} ${hint}` })
     sse(res, '[DONE]')
     res.end()
