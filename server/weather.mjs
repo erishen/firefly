@@ -2,6 +2,7 @@
 // 流程：先地理编码拿到经纬度，再查实时天气，返回给模型一段结构化简述。
 // 全程在服务端完成，浏览器只看到同源 /api/weather；如需换成需 Key 的提供商，改这里即可。
 import { proxyAgent } from './config.mjs'
+import { fetchWithTimeout } from './httpUtils.mjs'
 
 // WMO 天气代码 → 中文描述
 const WMO = {
@@ -53,7 +54,7 @@ export async function fetchWeather(args = {}, dispatcher = proxyAgent) {
       const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
         city.trim(),
       )}&count=1&language=zh&format=json`
-      const geoRes = await fetch(geoUrl, { dispatcher: dispatcher || undefined })
+      const geoRes = await fetchWithTimeout(geoUrl, { dispatcher: dispatcher || undefined }, 8000)
       if (!geoRes.ok) return { ok: false, error: `地理编码服务返回 ${geoRes.status}` }
       const geo = await geoRes.json()
       const loc = geo.results && geo.results[0]
@@ -68,7 +69,7 @@ export async function fetchWeather(args = {}, dispatcher = proxyAgent) {
       `&longitude=${longitude}` +
       `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m` +
       `&timezone=auto`
-    const fcRes = await fetch(fcUrl, { dispatcher: dispatcher || undefined })
+    const fcRes = await fetchWithTimeout(fcUrl, { dispatcher: dispatcher || undefined }, 8000)
     if (!fcRes.ok) return { ok: false, error: `天气服务返回 ${fcRes.status}` }
     const fc = await fcRes.json()
     const c = fc.current
@@ -81,7 +82,11 @@ export async function fetchWeather(args = {}, dispatcher = proxyAgent) {
     lines.push(`风速：${c.wind_speed_10m} km/h`)
     return { ok: true, summary: lines.join('\n'), city: cityName || undefined, raw: c }
   } catch (e) {
-    return { ok: false, error: `天气查询失败：${e?.message || String(e)}` }
+    const isTimeout = e?.name === 'AbortError'
+    return {
+      ok: false,
+      error: isTimeout ? '天气服务请求超时（上游未响应）' : `天气查询失败：${e?.message || String(e)}`,
+    }
   }
 }
 

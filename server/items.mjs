@@ -9,6 +9,7 @@
 // 健壮性：兼容多种返回结构（裸数组 / {items} / {data} / {results} / {list}），
 // 任何异常都把 HTTP 状态码和原始响应片段带回，便于排障。
 import { proxyAgent } from './config.mjs'
+import { fetchWithTimeout } from './httpUtils.mjs'
 
 // 已部署地址（如需指向其他实例或子路径，可用 ITEMS_API_BASE 环境变量覆盖）
 const ITEMS_BASE = (process.env.ITEMS_API_BASE || 'https://api.erishen.cn').replace(/\/$/, '')
@@ -39,7 +40,7 @@ export async function fetchItems(args = {}, dispatcher = proxyAgent) {
 
   try {
     console.log(`[items] 请求 ${url}`)
-    const res = await fetch(url, { dispatcher: dispatcher || undefined })
+    const res = await fetchWithTimeout(url, { dispatcher: dispatcher || undefined }, 8000)
     const text = await res.text()
     console.log(`[items] 响应 HTTP ${res.status}，body 前 240 字符：${text.slice(0, 240)}`)
 
@@ -86,9 +87,10 @@ export async function fetchItems(args = {}, dispatcher = proxyAgent) {
     })
     return { ok: true, count: items.length, summary: lines.join('\n'), raw: items }
   } catch (e) {
+    const isTimeout = e?.name === 'AbortError'
     return {
       ok: false,
-      error: `商品服务调用失败：${e?.message || String(e)}`,
+      error: isTimeout ? '商品服务请求超时（上游未响应）' : `商品服务调用失败：${e?.message || String(e)}`,
       cause: e?.cause?.code || (e?.cause && e.cause.message) || '',
     }
   }

@@ -4,7 +4,7 @@
 // 若模型决定调用 → 本服务端执行对应工具 → 把结果作为 tool 消息回填 →
 // 做第二轮（不带 tools）请求，把最终自然语言回答流式回前端。前端零改动。
 import { BASE, KEY, MODEL, TEMP, proxyAgent } from './config.mjs'
-import { readBody, sse, readSSEStream, createLeadingTrimmer } from './httpUtils.mjs'
+import { readBody, sse, readSSEStream, createLeadingTrimmer, fetchWithTimeout } from './httpUtils.mjs'
 import { fetchWeather, WEATHER_TOOL } from './weather.mjs'
 import { fetchItems, ITEMS_TOOL } from './items.mjs'
 
@@ -22,22 +22,26 @@ function buildRunners(location) {
 
 // 统一上游聊天补全请求（OpenAI 兼容），返回 fetch Response
 async function callUpstream(messages, withTools) {
-  return fetch(`${BASE.replace(/\/$/, '')}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${KEY}`,
+  return fetchWithTimeout(
+    `${BASE.replace(/\/$/, '')}/chat/completions`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${KEY}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages,
+        temperature: TEMP,
+        stream: true,
+        ...(withTools ? { tools: TOOL_DEFS, tool_choice: 'auto' } : {}),
+      }),
+      // 仅上游 LLM 请求走代理，不影响本地 /api
+      dispatcher: proxyAgent || undefined,
     },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      temperature: TEMP,
-      stream: true,
-      ...(withTools ? { tools: TOOL_DEFS, tool_choice: 'auto' } : {}),
-    }),
-    // 仅上游 LLM 请求走代理，不影响本地 /api
-    dispatcher: proxyAgent || undefined,
-  })
+    25000,
+  )
 }
 
 // 转发一条 SSE data 给前端，仅对 delta.content 做「前导空白剥离」（流式安全），

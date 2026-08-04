@@ -94,3 +94,19 @@ export function createLeadingTrimmer() {
     return out
   }
 }
+
+// 带超时的 fetch 封装：防止上游（Open-Meteo / api.erishen.cn / LLM 网关）挂起无响应，
+// 拖垮整个 /api/chat（本地会卡死、Vercel 上会触发函数 504 被腰斩）。
+//   url   目标地址
+//   opts  fetch 选项（可含 undici 的 dispatcher 走代理）
+//   ms    超时毫秒，默认 8000
+// 返回 fetch Response；超时抛 AbortError（调用方可在 catch 用 e.name === 'AbortError' 识别）
+export async function fetchWithTimeout(url, opts = {}, ms = 8000) {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), ms)
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
