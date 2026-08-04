@@ -5,13 +5,14 @@ dist/
 npm-debug.log*
 # 本地 LLM 代理密钥（含真实 key，绝不入库；用 .env.example 作模板）
 .env
-# 3D 模型文件：仅 fireflyMaid.vrm（默认角色「萤火女仆」）入库；其余样本/测试/备用
-# 模型仅留本地、不入库（国内网络下 download-avatar.sh 源不可达、且体积大）。
-# 本地部署可直接把对应文件放到 public/ 下，不会被 git 跟踪。
+# 3D 模型文件全部留本地、不入库（含默认角色 fireflyMaid.vrm）；其 VRM 许可为
+# OnlyAuthor + redistribution=disallow，禁止公开再分发。国内网络下 download-avatar.sh
+# 源不可达、且体积大。本地部署用 `vercel deploy` 上传工作目录即可带上，无需入库。
 public/avatar.glb
 public/avatar-avaturn.glb
 public/model.glb
 public/avatar.vrm
+public/fireflyMaid.vrm
 public/test.vrm
 # WorkBuddy 项目内部数据（记忆/日志），不进仓库
 .workbuddy/
