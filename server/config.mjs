@@ -113,4 +113,23 @@ const proxyAgent = await (async () => {
   }
 })()
 
-export { proxyAgent }
+// 直连环境（Vercel 等无系统代理）用带 keep-alive 的连接池，复用 TLS 连接，
+// 减少每次天气/商品请求的建立握手开销（Vercel 函数实例短生命周期，复用能显著提速）。
+// 走代理时直接复用 proxyAgent（其自身也带连接池），无需额外 Agent。
+const pooledAgent = proxyAgent
+  ? proxyAgent
+  : await (async () => {
+      try {
+        const { Agent } = await import('undici')
+        return new Agent({
+          keepAlive: true,
+          keepAliveTimeout: 60_000,
+          headersTimeout: 8000,
+          bodyTimeout: 8000,
+        })
+      } catch {
+        return null
+      }
+    })()
+
+export { proxyAgent, pooledAgent }

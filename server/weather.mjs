@@ -1,8 +1,26 @@
 // 天气工具（Open-Meteo，免费、无需 API Key、全球覆盖）
 // 流程：先地理编码拿到经纬度，再查实时天气，返回给模型一段结构化简述。
 // 全程在服务端完成，浏览器只看到同源 /api/weather；如需换成需 Key 的提供商，改这里即可。
-import { proxyAgent } from './config.mjs'
+import { proxyAgent, pooledAgent } from './config.mjs'
 import { fetchWithTimeout } from './httpUtils.mjs'
+
+// 天气/地理编码结果的内存缓存（随同一函数实例存活，Vercel 冷启动会清空，可接受）。
+// 天气变化缓慢，按经纬度缓存 10 分钟可让重复提问（demo 最常见）近乎瞬时；
+// 地理编码结果极稳定，缓存 24 小时，省掉对 geocoding-api 的二次请求。
+const FORECAST_TTL = 10 * 60 * 1000
+const GEOCODE_TTL = 24 * 60 * 60 * 1000
+const forecastCache = new Map() // key: "lat,lng" -> { expire, data }
+const geocodeCache = new Map() // key: city(lower) -> { expire, lat, lng, name, country }
+
+function cacheGet(map, key) {
+  const hit = map.get(key)
+  if (hit && hit.expire > Date.now()) return hit.data
+  if (hit) map.delete(key)
+  return null
+}
+function cacheSet(map, key, data, ttl) {
+  map.set(key, { expire: Date.now() + ttl, data })
+}
 
 // WMO 天气代码 → 中文描述
 const WMO = {
@@ -29,7 +47,7 @@ function wmoText(code) {
 // 优先级：lat/lon → location → city 地理编码。
 // 无 cityName（定位直查场景）则不写城市行，呼应「回复不点名城市」。
 // 返回 { ok, summary?, city?, raw?, error? }
-export async function fetchWeather(args = {}, dispatcher = proxyAgent) {
+export async function fetchWeather(args = {}, dispatcher = pooledAgent) {
   const { city, lat, lon, location } = args
   let latitude
   let longitude
@@ -51,18 +69,36 @@ export async function fetchWeather(args = {}, dispatcher = proxyAgent) {
       if (!city || !city.trim()) {
         return { ok: false, error: '未提供城市或经纬度，无法查询天气' }
       }
-      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
-        city.trim(),
-      )}&count=1&language=zh&format=json`
-      const geoRes = await fetchWithTimeout(geoUrl, { dispatcher: dispatcher || undefined }, 8000)
-      if (!geoRes.ok) return { ok: false, error: `地理编码服务返回 ${geoRes.status}` }
-      const geo = await geoRes.json()
-      const loc = geo.results && geo.results[0]
-      if (!loc) return { ok: false, error: `找不到城市「${city}」，请换个城市名或写法试试` }
-      latitude = loc.latitude
-      longitude = loc.longitude
-      cityName = loc.name + (loc.country ? `（${loc.country}）` : '')
+      const geoKey = city.trim().toLowerCase()
+      const geoHit = cacheGet(geocodeCache, geoKey)
+      if (geoHit) {
+        latitude = geoHit.lat
+        longitude = geoHit.lng
+        cityName = geoHit.name + (geoHit.country ? `（${geoHit.country}）` : '')
+      } else {
+        const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+          city.trim(),
+        )}&count=1&language=zh&format=json`
+        const geoRes = await fetchWithTimeout(geoUrl, { dispatcher: dispatcher || undefined }, 8000)
+        if (!geoRes.ok) return { ok: false, error: `地理编码服务返回 ${geoRes.status}` }
+        const geo = await geoRes.json()
+        const loc = geo.results && geo.results[0]
+        if (!loc) return { ok: false, error: `找不到城市「${city}」，请换个城市名或写法试试` }
+        latitude = loc.latitude
+        longitude = loc.longitude
+        cityName = loc.name + (loc.country ? `（${loc.country}）` : '')
+        cacheSet(
+          geocodeCache,
+          geoKey,
+          { lat: latitude, lng: longitude, name: loc.name, country: loc.country || '' },
+          GEOCODE_TTL,
+        )
+      }
     }
+
+    const fcKey = `${latitude.toFixed(2)},${longitude.toFixed(2)}`
+    const fcHit = cacheGet(forecastCache, fcKey)
+    if (fcHit) return fcHit
 
     const fcUrl =
       `https://api.open-meteo.com/v1/forecast?latitude=${latitude}` +
@@ -80,7 +116,9 @@ export async function fetchWeather(args = {}, dispatcher = proxyAgent) {
     lines.push(`气温：${c.temperature_2m}°C（体感 ${c.apparent_temperature}°C）`)
     lines.push(`湿度：${c.relative_humidity_2m}%`)
     lines.push(`风速：${c.wind_speed_10m} km/h`)
-    return { ok: true, summary: lines.join('\n'), city: cityName || undefined, raw: c }
+    const result = { ok: true, summary: lines.join('\n'), city: cityName || undefined, raw: c }
+    cacheSet(forecastCache, fcKey, result, FORECAST_TTL)
+    return result
   } catch (e) {
     const isTimeout = e?.name === 'AbortError'
     return {

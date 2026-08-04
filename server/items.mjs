@@ -8,7 +8,7 @@
 //
 // 健壮性：兼容多种返回结构（裸数组 / {items} / {data} / {results} / {list}），
 // 任何异常都把 HTTP 状态码和原始响应片段带回，便于排障。
-import { proxyAgent } from './config.mjs'
+import { proxyAgent, pooledAgent } from './config.mjs'
 import { fetchWithTimeout } from './httpUtils.mjs'
 
 // 已部署地址（如需指向其他实例或子路径，可用 ITEMS_API_BASE 环境变量覆盖）
@@ -28,7 +28,7 @@ function extractItems(parsed) {
 //   args.keyword   可选，按名称筛选（走 /items/search）
 //   args.limit     返回上限，默认 20，最大 50
 // 返回 { ok, count?, summary?, status?, raw?, error? }
-export async function fetchItems(args = {}, dispatcher = proxyAgent) {
+export async function fetchItems(args = {}, dispatcher = pooledAgent) {
   const keyword = (args.keyword || '').toString().trim()
   let limit = Number(args.limit)
   if (!Number.isFinite(limit) || limit <= 0) limit = 20
