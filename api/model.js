@@ -7,8 +7,8 @@
 //   - 主密钥 MODEL_SIGN_SECRET 只存在于 Vercel 环境变量，永不进浏览器 bundle；
 //     浏览器最终拿到的只是带 sig/exp 的限时签名 URL。
 //   - 原始模型地址不再可裸链（需有效签名），CORS 仍由 fastapi-web 提供（d319701 已修）。
-import { setCORS } from '../server/httpUtils.mjs'
-
+//
+// 本函数由浏览器同域调用（firefly.erishen.cn/api/model），不需要 CORS 头。
 const BASE = process.env.MODEL_SIGN_BASE || 'https://api.erishen.cn'
 const SECRET = process.env.MODEL_SIGN_SECRET || ''
 
@@ -18,13 +18,14 @@ export const config = {
 }
 
 export default async function handler(req, res) {
-  setCORS(res, req, 'https://firefly.erishen.cn')
+  // 浏览器同域调用，无需 CORS；处理预检即可。
   if (req.method === 'OPTIONS') {
     res.statusCode = 204
     res.end()
     return
   }
   if (!SECRET) {
+    console.error('[api/model] MODEL_SIGN_SECRET 未配置')
     res.statusCode = 500
     res.end('MODEL_SIGN_SECRET 未配置')
     return
@@ -39,15 +40,24 @@ export default async function handler(req, res) {
       body: JSON.stringify({ name: 'fireflyMaid.vrm', base: BASE }),
     })
     if (!r.ok) {
+      const text = await r.text().catch(() => '')
+      console.error(`[api/model] 签名换发失败: ${r.status}`, text.slice(0, 200))
       res.statusCode = 502
       res.end(`签名换发失败: ${r.status}`)
       return
     }
-    const { url } = await r.json()
-    res.setHeader('Location', url)
+    const data = await r.json()
+    if (!data || !data.url) {
+      console.error('[api/model] 签名服务返回异常体:', JSON.stringify(data))
+      res.statusCode = 502
+      res.end('签名服务返回异常')
+      return
+    }
+    res.setHeader('Location', data.url)
     res.statusCode = 302
     res.end()
   } catch (e) {
+    console.error('[api/model] 签名服务调用异常:', e && e.message ? e.message : e)
     res.statusCode = 502
     res.end('签名服务调用异常')
   }
