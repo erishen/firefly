@@ -172,6 +172,14 @@ npm run preview  # 预览生产构建
 | `@upstash/redis` | 可选的使用日志持久化 |
 | `undici` | 调 LLM 时的上游代理 Agent |
 
+## 3D 模型分发
+
+萤火女仆角色（`fireflyMaid.vrm`）的 VRM 许可为 `OnlyAuthor + redistribution=disallow`（第三方 VRoid 创作，仅作者可商用/再分发），因此**不随仓库公开分发**，而是通过 `api.erishen.cn/api/models/fireflyMaid.vrm` **带令牌获取**：
+
+- 生产环境：默认从该受保护接口加载，需在设置面板填写「模型访问令牌」（须与服务端 `MODEL_ACCESS_TOKEN` 一致）；令牌错误会回退到内置程序化角色。
+- 开发环境（`npm run dev`）：直接用本地 `public/fireflyMaid.vrm`，无需令牌。
+- 令牌可经 `Authorization: Bearer` / `X-API-Key` / `?token=` 三种方式传递；接口详情见 `personal/web-services/fastapi-web` 的 `app/routers/protected_files.py`。
+
 ## 目录结构
 
 ```

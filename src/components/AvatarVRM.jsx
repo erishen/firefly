@@ -53,7 +53,7 @@ function applyArmPose(bones) {
 //
 // 说明：VRM 默认面向 -Z，组件内已把 scene 旋转 180° 使其面向相机（+Z）。
 
-export default function AvatarVRM({ url, speakingRef, blinkRef, onClick }) {
+export default function AvatarVRM({ url, token, speakingRef, blinkRef, onClick }) {
   const [vrm, setVrm] = useState(null)
   const [error, setError] = useState(null)
   const headRef = useRef(null)
@@ -78,9 +78,7 @@ export default function AvatarVRM({ url, speakingRef, blinkRef, onClick }) {
     baseEyes.current = []
     const loader = new GLTFLoader()
     loader.register((parser) => new VRMLoaderPlugin(parser))
-    loader.load(
-      url,
-      (gltf) => {
+    const onLoaded = (gltf) => {
         if (disposed) return
         const v = gltf.userData.vrm
         if (!v) {
@@ -147,19 +145,33 @@ export default function AvatarVRM({ url, speakingRef, blinkRef, onClick }) {
 
         console.log(`[avatar] VRM 加载成功，metaVersion=${ver || '未知'}；expressionManager 表情数=${v.expressionManager ? v.expressionManager.expressions.length : 0}；口型=${useExprMouthRef.current ? 'expressionManager' : (mouthMesh ? 'morph直通(' + mouthMesh.name + ')' : '无')}；眨眼=${useExprBlinkRef.current ? 'expressionManager' : (blinkMesh ? 'morph直通' : '无')}`)
         setVrm(v)
-      },
-      undefined,
-      (err) => {
-        if (!disposed) {
-          console.error('[avatar] VRM 加载失败:', err)
-          setError(err)
-        }
+    }
+    const onError = (err) => {
+      if (!disposed) {
+        console.error('[avatar] VRM 加载失败:', err)
+        setError(err)
       }
-    )
+    }
+    if (token) {
+      // 远程受保护模型：GLTFLoader.load 不支持自定义请求头，
+      // 故先带 Authorization 头 fetch 字节，再用 loader.parse 解析。
+      fetch(url, { headers: { Authorization: 'Bearer ' + token } })
+        .then((r) => {
+          if (!r.ok) throw new Error('模型下载失败：HTTP ' + r.status)
+          return r.arrayBuffer()
+        })
+        .then((buf) => {
+          if (disposed) return
+          loader.parse(buf, '', onLoaded, onError)
+        })
+        .catch(onError)
+    } else {
+      loader.load(url, onLoaded, undefined, onError)
+    }
     return () => {
       disposed = true
     }
-  }, [url])
+  }, [url, token])
 
   useFrame((state, delta) => {
     if (!vrm) return

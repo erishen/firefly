@@ -73,6 +73,42 @@ export default function App() {
     [],
   )
 
+  // 萤火女仆模型：从 api.erishen.cn 受保护接口获取（需令牌）。地址/令牌存本地，仅自己可用。
+  const [modelUrl, setModelUrl] = useState(() => {
+    try {
+      return localStorage.getItem('firefly-model-url') || ''
+    } catch {
+      return ''
+    }
+  })
+  const [modelToken, setModelToken] = useState(() => {
+    try {
+      return localStorage.getItem('firefly-model-token') || ''
+    } catch {
+      return ''
+    }
+  })
+  const handleModelUrlChange = useCallback(
+    (v) => {
+      setModelUrl(v)
+      try {
+        if (v && v.trim()) localStorage.setItem('firefly-model-url', v.trim())
+        else localStorage.removeItem('firefly-model-url')
+      } catch {}
+    },
+    [],
+  )
+  const handleModelTokenChange = useCallback(
+    (v) => {
+      setModelToken(v)
+      try {
+        if (v && v.trim()) localStorage.setItem('firefly-model-token', v.trim())
+        else localStorage.removeItem('firefly-model-token')
+      } catch {}
+    },
+    [],
+  )
+
   // 多轮对话（走本地代理，真正的 key 在服务端 .env）
   const chat = useChat({
     systemPrompt,
@@ -302,10 +338,21 @@ export default function App() {
           onClearLocation={clearLocation}
           contact={contact}
           onContactChange={handleContactChange}
+          modelUrl={modelUrl}
+          onModelUrlChange={handleModelUrlChange}
+          modelToken={modelToken}
+          onModelTokenChange={handleModelTokenChange}
         />
       </div>
         <Canvas shadows camera={{ position: [0, 1.3, 3.4], fov: 40 }}>
-          <Stage speakingRef={speakingRef} bubble={bubble} onClick={handleClick} modelSource={modelSource} />
+          <Stage
+            speakingRef={speakingRef}
+            bubble={bubble}
+            onClick={handleClick}
+            modelSource={modelSource}
+            fireflyModelUrl={modelUrl}
+            modelToken={modelToken}
+          />
         <OrbitControls
           makeDefault
           enableDamping

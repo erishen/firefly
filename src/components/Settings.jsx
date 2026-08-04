@@ -14,6 +14,10 @@ export default function Settings({
   onClearLocation,
   contact,
   onContactChange,
+  modelUrl,
+  onModelUrlChange,
+  modelToken,
+  onModelTokenChange,
 }) {
   const [open, setOpen] = useState(false)
   const textareaRef = useRef(null)
@@ -67,9 +71,27 @@ export default function Settings({
             你在这里修改后，小菲就会报<strong>你填的号</strong>——但只存在你自己的浏览器，不影响其他访客，也不上传。
           </p>
 
+          <label className="settings-label">模型地址（VRM URL）</label>
+          <input
+            className="settings-input"
+            type="text"
+            value={modelUrl || ''}
+            onChange={(e) => onModelUrlChange && onModelUrlChange(stripControlChars(e.target.value))}
+            placeholder="https://api.erishen.cn/api/models/fireflyMaid.vrm"
+          />
+          <label className="settings-label">模型访问令牌</label>
+          <input
+            className="settings-input"
+            type="password"
+            value={modelToken || ''}
+            onChange={(e) => onModelTokenChange && onModelTokenChange(stripControlChars(e.target.value))}
+            placeholder="与 api.erishen.cn 的 MODEL_ACCESS_TOKEN 一致"
+          />
           <p className="settings-hint">
-            当前模型：<b>Firefly</b>（<code>public/fireflyMaid.vrm</code>，萤火女仆）。许可宽松——允许商用 / 二次配布 / 修改，
-            但<b>使用时须附完整借物表</b>（页面 footer 或视频简介挂上模型及其底层素材原作者清单），否则侵权。
+            当前模型：<b>Firefly</b>（萤火女仆）。该 VRM 的许可为 <code>OnlyAuthor + redistribution=disallow</code>
+            （第三方 VRoid 创作，仅作者可商用 / 再分发），故经 <code>api.erishen.cn/api/models</code> <b>带令牌获取</b>，
+            不开放匿名下载。上面两项默认留空即使用内置默认地址；令牌需与服务端 <code>MODEL_ACCESS_TOKEN</code> 一致，
+            否则模型加载会失败并回退到内置角色。模型文件不随站点公开分发。
           </p>
 
           <div className="settings-actions">

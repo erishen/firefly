@@ -16,18 +16,25 @@ import { useBlink } from '../hooks/useBlink'
 //   备用头像      public/model.glb            —— Avaturn 风格静态网格，无面部 blendshape
 //   VRoid 头像    public/avatar.vrm           —— 二次元风，自带完整面部 blendshape（眨眼+口型），国内可达
 //   测试头像      public/test.vrm             —— 用户导入的 VRM（可能为 VRM0.0，three-vrm 会自动归一化表情名）
-//   萤火女仆      public/fireflyMaid.vrm      —— 用户导入 VRM（maid 模型；许可允许商用+二次配布，但须附完整借物表）
+//   萤火女仆      api.erishen.cn/api/models/fireflyMaid.vrm —— 用户导入 VRM；其 VRM 许可为
+//               OnlyAuthor + redistribution=disallow（第三方 VRoid 创作，仅作者可商用/再分发），
+//               故经 api.erishen.cn 带令牌获取，不开放匿名下载（见 Settings「模型访问令牌」）。
 // 加载失败时都会自动回退到内置程序化角色，页面不会白屏。
 const RPM_AVATAR_URL = '/avatar.glb'
 const AVATURN_AVATAR_URL = '/avatar-avaturn.glb'
 const MODEL_GLB_URL = '/model.glb'
 const VRM_AVATAR_URL = '/avatar.vrm'
 const TEST_VRM_URL = '/test.vrm'
-const FIREFLY_VRM_URL = '/fireflyMaid.vrm' // 萤火女仆：用户导入 VRM，许可允许商用+二次配布，但须附完整借物表
+// 萤火女仆：开发环境直接用本地 public/ 下的模型（无需令牌、离线可用）；
+// 生产环境从 api.erishen.cn 受保护接口获取（需令牌，见 Settings「模型访问令牌」）。
+// 该 VRM 许可 redistribution=disallow，仅供本人经令牌获取，请勿匿名公开分发。
+const FIREFLY_VRM_URL = import.meta.env.DEV
+  ? '/fireflyMaid.vrm'
+  : 'https://api.erishen.cn/api/models/fireflyMaid.vrm'
 
 // 场景：灯光 / 粒子 / 地面 / 交互状态
 // speakingRef、bubble、onClick、modelSource 由 App 统一持有
-export default function Stage({ speakingRef, bubble, onClick, modelSource = 'avaturn' }) {
+export default function Stage({ speakingRef, bubble, onClick, modelSource = 'avaturn', fireflyModelUrl, modelToken }) {
   const blinkRef = useRef(false)
 
   // 眨眼调度统一在这里跑一次（程序化角色与 RPM 模型共用 blinkRef）
@@ -36,7 +43,7 @@ export default function Stage({ speakingRef, bubble, onClick, modelSource = 'ava
   const avatarUrl =
     modelSource === 'rpm' ? RPM_AVATAR_URL : modelSource === 'model' ? MODEL_GLB_URL : AVATURN_AVATAR_URL
   // VRM 类（VRoid / Test / Firefly）走 AvatarVRM；三者只是文件不同
-  const vrmUrl = modelSource === 'test' ? TEST_VRM_URL : modelSource === 'firefly' ? FIREFLY_VRM_URL : VRM_AVATAR_URL
+  const vrmUrl = modelSource === 'test' ? TEST_VRM_URL : modelSource === 'firefly' ? (fireflyModelUrl || FIREFLY_VRM_URL) : VRM_AVATAR_URL
 
   // 地面柔光：径向渐变贴图，中心亮、边缘透明，自然融入背景（不再是一块硬边圆盘）
   const floorTex = useMemo(() => {
@@ -83,6 +90,7 @@ export default function Stage({ speakingRef, bubble, onClick, modelSource = 'ava
               {modelSource === 'vrm' || modelSource === 'test' || modelSource === 'firefly' ? (
                 <AvatarVRM
                   url={vrmUrl}
+                  token={modelSource === 'firefly' ? modelToken : undefined}
                   speakingRef={speakingRef}
                   blinkRef={blinkRef}
                   onClick={onClick}
