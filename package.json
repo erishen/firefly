@@ -1,21 +1,27 @@
 {
-  "name": "react-three-fiber-demo",
+  "name": "firefly",
   "version": "0.1.0",
   "private": true,
-  "description": "基础 3D 场景 Demo：React + Vite + react-three-fiber + drei",
+  "description": "Q 版 3D 数字人（萤火/小菲）：React + Vite + react-three-fiber + drei",
+  "engines": {
+    "node": ">=20"
+  },
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.mjs",
+    "server": "node server/proxy.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@pixiv/three-vrm": "^3.5.5",
     "@react-three/drei": "^9.114.0",
     "@react-three/fiber": "^8.16.8",
-    "@react-three/postprocessing": "^2.19.1",
+    "@upstash/redis": "^1.38.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "three": "^0.169.0"
+    "three": "^0.169.0",
+    "undici": "^8.9.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
