@@ -53,6 +53,8 @@ export default async function handler(req, res) {
       res.end('签名服务返回异常')
       return
     }
+    // 不让浏览器缓存这次 302：签名 URL 仅 5 分钟有效，缓存后过期回放会 401
+    res.setHeader('Cache-Control', 'no-store')
     res.setHeader('Location', data.url)
     res.statusCode = 302
     res.end()

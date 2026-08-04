@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { Html } from '@react-three/drei'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
 import * as THREE from 'three'
@@ -46,6 +47,68 @@ function applyArmPose(bones) {
   }
 }
 
+// —— 模型字节缓存（Cache API）——
+// 14.5MB 的 VRM 每次重新下载很慢；用浏览器 Cache API 把解析好的字节按 URL 缓存，
+// 刷新/重进页面时命中缓存即可秒开。缓存 key 用请求 URL（firefly 固定为 /api/model，
+// 不受 5 分钟签名 URL 轮换影响）。隐私模式等不支持 Cache API 时自动降级为每次网络下载。
+const MODEL_CACHE_NAME = 'firefly-vrm-cache-v1'
+
+async function readWithProgress(resp, onProgress) {
+  const total = Number(resp.headers.get('Content-Length')) || 0
+  if (!resp.body || !total) return resp.arrayBuffer()
+  const reader = resp.body.getReader()
+  const chunks = []
+  let received = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(value)
+    received += value.length
+    onProgress(Math.min(99, Math.round((received / total) * 100)))
+  }
+  const out = new Uint8Array(received)
+  let pos = 0
+  for (const c of chunks) {
+    out.set(c, pos)
+    pos += c.length
+  }
+  return out.buffer
+}
+
+async function loadModelBytes(url, headers, onProgress) {
+  // 1) 本地缓存命中 → 秒开（跳过下载）
+  try {
+    const cache = await caches.open(MODEL_CACHE_NAME)
+    const hit = await cache.match(url)
+    if (hit) {
+      if (onProgress) onProgress(100)
+      console.log('[avatar] 命中本地缓存，跳过下载：', url)
+      return hit.arrayBuffer()
+    }
+  } catch (_) {
+    /* Cache API 不可用时跳过缓存，走网络 */
+  }
+
+  // 2) 下载（带真实进度）
+  const resp = await fetch(url, headers ? { headers } : undefined)
+  if (!resp.ok) throw new Error('模型下载失败：HTTP ' + resp.status)
+  const buf = await readWithProgress(resp, onProgress)
+
+  // 3) 写入缓存（arrayBuffer 只能消费一次，存副本）
+  try {
+    const cache = await caches.open(MODEL_CACHE_NAME)
+    await cache.put(
+      url,
+      new Response(buf.slice(0), {
+        headers: { 'Content-Type': resp.headers.get('Content-Type') || 'model/gltf-binary' },
+      }),
+    )
+  } catch (_) {
+    /* 缓存写入失败不影响加载 */
+  }
+  return buf
+}
+
 // VRoid (VRM) 模型：本地 public/avatar.vrm
 // VRM 自带完整面部 blendshape（blink / aa 等 viseme），能眨眼 + 口型说话，且国内可达、衣服可自由选（夏装/清凉装都有）。
 // 驱动用 @pixiv/three-vrm 的 expressionManager（思路同 RPM 的 ARKit morph，但命名是 VRM 标准）；
@@ -56,6 +119,8 @@ function applyArmPose(bones) {
 export default function AvatarVRM({ url, token, speakingRef, blinkRef, onClick }) {
   const [vrm, setVrm] = useState(null)
   const [error, setError] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [progress, setProgress] = useState(0)
   const headRef = useRef(null)
   const eyeRefs = useRef([])
   const baseHead = useRef(null)
@@ -69,9 +134,20 @@ export default function AvatarVRM({ url, token, speakingRef, blinkRef, onClick }
   const useExprMouthRef = useRef(false)
   const useExprBlinkRef = useRef(false)
 
-  // 异步加载 VRM（GLTFLoader + VRMLoaderPlugin）
+  // 异步加载 VRM（GLTFLoader + VRMLoaderPlugin），带进度与浏览器缓存
   useEffect(() => {
     let disposed = false
+    let lastReported = -1
+    const report = (p) => {
+      if (disposed || p === lastReported) return
+      lastReported = p
+      setProgress(p)
+    }
+    // 切换模型时先清空旧角色并进入加载态
+    setVrm(null)
+    setError(null)
+    setLoading(true)
+    setProgress(0)
     headRef.current = null
     eyeRefs.current = []
     baseHead.current = null
@@ -83,6 +159,7 @@ export default function AvatarVRM({ url, token, speakingRef, blinkRef, onClick }
         const v = gltf.userData.vrm
         if (!v) {
           setError(new Error('该文件不是有效的 VRM（缺少 userData.vrm）'))
+          setLoading(false)
           return
         }
         VRMUtils.removeUnnecessaryVertices(gltf.scene)
@@ -145,29 +222,23 @@ export default function AvatarVRM({ url, token, speakingRef, blinkRef, onClick }
 
         console.log(`[avatar] VRM 加载成功，metaVersion=${ver || '未知'}；expressionManager 表情数=${v.expressionManager ? v.expressionManager.expressions.length : 0}；口型=${useExprMouthRef.current ? 'expressionManager' : (mouthMesh ? 'morph直通(' + mouthMesh.name + ')' : '无')}；眨眼=${useExprBlinkRef.current ? 'expressionManager' : (blinkMesh ? 'morph直通' : '无')}`)
         setVrm(v)
+        setLoading(false)
     }
     const onError = (err) => {
       if (!disposed) {
         console.error('[avatar] VRM 加载失败:', err)
         setError(err)
+        setLoading(false)
       }
     }
-    if (token) {
-      // 远程受保护模型：GLTFLoader.load 不支持自定义请求头，
-      // 故先带 Authorization 头 fetch 字节，再用 loader.parse 解析。
-      fetch(url, { headers: { Authorization: 'Bearer ' + token } })
-        .then((r) => {
-          if (!r.ok) throw new Error('模型下载失败：HTTP ' + r.status)
-          return r.arrayBuffer()
-        })
-        .then((buf) => {
-          if (disposed) return
-          loader.parse(buf, '', onLoaded, onError)
-        })
-        .catch(onError)
-    } else {
-      loader.load(url, onLoaded, undefined, onError)
-    }
+    // 统一走「fetch 字节 + 缓存」：无论是否带令牌、是否跨域，都能复用浏览器缓存秒开。
+    const headers = token ? { Authorization: 'Bearer ' + token } : undefined
+    loadModelBytes(url, headers, report)
+      .then((buf) => {
+        if (disposed) return
+        loader.parse(buf, '', onLoaded, onError)
+      })
+      .catch(onError)
     return () => {
       disposed = true
     }
@@ -232,24 +303,47 @@ export default function AvatarVRM({ url, token, speakingRef, blinkRef, onClick }
 
   // 加载失败：抛出，由上层 ModelErrorBoundary 回退到程序化角色
   if (error) throw error
-  if (!vrm) return null
 
   return (
-    <group
-      onClick={(e) => {
-        e.stopPropagation()
-        onClick && onClick()
-      }}
-      onPointerOver={(e) => {
-        e.stopPropagation()
-        document.body.style.cursor = 'pointer'
-      }}
-      onPointerOut={() => {
-        document.body.style.cursor = 'default'
-      }}
-    >
-      {/* VRM 默认面向 -Z，旋转 180° 使其面向相机 */}
-      <primitive object={vrm.scene} rotation-y={Math.PI} />
-    </group>
+    <>
+      {vrm && (
+        <group
+          onClick={(e) => {
+            e.stopPropagation()
+            onClick && onClick()
+          }}
+          onPointerOver={(e) => {
+            e.stopPropagation()
+            document.body.style.cursor = 'pointer'
+          }}
+          onPointerOut={() => {
+            document.body.style.cursor = 'default'
+          }}
+        >
+          {/* VRM 默认面向 -Z，旋转 180° 使其面向相机 */}
+          <primitive object={vrm.scene} rotation-y={Math.PI} />
+        </group>
+      )}
+      {loading && (
+        <Html fullscreen zIndexRange={[200, 0]} style={{ pointerEvents: 'none' }}>
+          <div className="vrm-loading">
+            <div className="vrm-loading-spinner" />
+            <div className="vrm-loading-title">小菲正在登场…</div>
+            {progress > 0 && progress < 100 && (
+              <div className="vrm-loading-bar">
+                <span style={{ width: `${progress}%` }} />
+              </div>
+            )}
+            <div className="vrm-loading-sub">
+              {progress >= 100
+                ? '马上就好 ✨'
+                : progress > 0
+                  ? `已下载 ${progress}%`
+                  : '首次加载需十几秒，之后会从浏览器缓存秒开'}
+            </div>
+          </div>
+        </Html>
+      )}
+    </>
   )
 }
