@@ -3,7 +3,7 @@
 // 首轮请求带 tools（当前有 get_weather / query_items）：模型可自行决定何时调用工具。
 // 若模型决定调用 → 本服务端执行对应工具 → 把结果作为 tool 消息回填 →
 // 做第二轮（不带 tools）请求，把最终自然语言回答流式回前端。前端零改动。
-import { BASE, KEY, MODEL, TEMP, proxyAgent } from './config.mjs'
+import { BASE, KEY, MODEL, TEMP, proxyAgent, pooledAgent } from './config.mjs'
 import { readBody, sse, readSSEStream, createLeadingTrimmer, fetchWithTimeout } from './httpUtils.mjs'
 import { fetchWeather, WEATHER_TOOL } from './weather.mjs'
 import { fetchItems, ITEMS_TOOL } from './items.mjs'
@@ -22,13 +22,15 @@ const CITIES = [
 const CITY_RE = new RegExp(`(${CITIES.join('|')})`)
 // 天气意图关键词（命中则在服务端预取天气并注入上下文，省掉一轮 LLM 往返，压低 Vercel Hobby 10s 超时风险）
 const WEATHER_INTENT_RE = /天气|气温|温[度差]|下雨|下雪|带伞|冷吗|热吗|降温|升温|台风|湿度|风速|几度|多少度|weather|temperature/i
+// 商品/服务意图关键词（命中则在服务端预取商品清单并注入上下文，省掉一轮 LLM 往返）
+const ITEMS_INTENT_RE = /商品|清单|报价|怎么收费|收费标准|特价|优惠|能提供(什么|哪些)|有什么(服务|业务|商品|东西)|有哪些(服务|商品)|价格(多少|怎么算|表)|想(咨询|了解|问).*(服务|业务)/i
 
 // 工具执行器：name → async (args) => resultObj
 // 在 handleChat 内按请求上下文（如用户位置 location）闭包构造。
 function buildRunners(location) {
   return {
-    [WEATHER_TOOL.function.name]: (args) => fetchWeather({ ...args, location }, proxyAgent),
-    [ITEMS_TOOL.function.name]: (args) => fetchItems(args, proxyAgent),
+    [WEATHER_TOOL.function.name]: (args) => fetchWeather({ ...args, location }, pooledAgent),
+    [ITEMS_TOOL.function.name]: (args) => fetchItems(args, pooledAgent),
   }
 }
 
@@ -110,8 +112,28 @@ export async function handleChat(req, res) {
       }
     }
   }
+
+  // 商品意图预判 + 服务端预取（与天气对称）：命中则把商品清单摘要注入系统提示词，
+  // 并去掉首轮 query_items 工具，让模型直接作答、跳过「工具二轮」，
+  // 把整体耗时从「LLM1+商品+LLM2」压到「商品+LLM1」，规避 Vercel Hobby 10s 腰斩
+  // （表现为「问商品没返回 / 没获取到」）。
+  const itemsIntent = !!lastUserMsg && ITEMS_INTENT_RE.test(lastUserMsg.content || '')
+  let itemsContext = ''
+  if (itemsIntent) {
+    try {
+      const it = await fetchItems({}, pooledAgent)
+      if (it.ok) {
+        itemsContext = `\n[系统商品/服务上下文，请据此直接回答用户，不要再调用商品工具] ${it.summary}`
+        round1Tools = round1Tools.filter((t) => t.function.name !== ITEMS_TOOL.function.name)
+      }
+    } catch {
+      /* 预取失败 → 保留商品工具，回退到原二轮路径 */
+    }
+  }
+
+  const sysExtra = [weatherContext, itemsContext].filter(Boolean).join('\n')
   const llm1Messages = (payload.messages || []).map((m, i) =>
-    i === 0 && m.role === 'system' && weatherContext ? { ...m, content: m.content + weatherContext } : m,
+    i === 0 && m.role === 'system' && sysExtra ? { ...m, content: m.content + sysExtra } : m,
   )
 
   // 2) 未配置 → 友好错误（走 SSE 通道，前端统一解析）
