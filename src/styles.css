@@ -687,6 +687,33 @@ canvas {
 .loc-clear:hover {
   background: rgba(111, 224, 207, 0.1);
 }
+
+/* 模型缓存清理区 */
+.cache-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+}
+.cache-row .settings-row-text {
+  flex: 1;
+  min-width: 0;
+}
+.cache-row .settings-row-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(234, 246, 245, 0.85);
+  margin-bottom: 2px;
+}
+.cache-row .settings-hint {
+  margin: 0;
+}
+.cache-msg {
+  color: rgba(111, 224, 207, 0.92);
+  font-weight: 600;
+  margin-top: 4px;
+}
 .settings-hint {
   font-size: 11px;
   color: rgba(234, 246, 245, 0.5);

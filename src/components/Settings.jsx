@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { stripControlChars } from '../utils/sanitize'
+import { clearModelCache } from '../utils/modelCache'
 
 // 设置面板：仅前端可配置「数字人人格（系统提示词）」；
 // 模型 base/key/model 在服务端 .env，浏览器永远接触不到。
@@ -21,6 +22,7 @@ export default function Settings({
 }) {
   const [open, setOpen] = useState(false)
   const textareaRef = useRef(null)
+  const [cacheMsg, setCacheMsg] = useState('')
 
   // 让「数字人人格」文本框随内容自动撑高：消除它自身的内部滚动条，
   // 避免与外层 .overlay 的滚动条形成双滚动条。open 翻转 / 输入变化都重算高度。
@@ -30,6 +32,18 @@ export default function Settings({
     el.style.height = 'auto'
     el.style.height = el.scrollHeight + 'px'
   }, [systemPrompt, open])
+
+  // 清除已缓存的模型字节：当前已加载的 VRM 会缓存在本浏览器，
+  // 换模型或想强制重下时调用（确认后删除 Cache API 中的缓存）。
+  const handleClearCache = async () => {
+    if (!window.confirm('确定清除已缓存的模型文件吗？下次加载会重新下载（约十几秒）。')) return
+    try {
+      const ok = await clearModelCache()
+      setCacheMsg(ok ? '已清除，刷新页面后重新下载模型' : '当前浏览器不支持缓存 API，无需清除')
+    } catch (e) {
+      setCacheMsg('清除失败：' + (e && e.message ? e.message : String(e)))
+    }
+  }
 
   return (
     <div className="settings">
@@ -85,14 +99,27 @@ export default function Settings({
             type="password"
             value={modelToken || ''}
             onChange={(e) => onModelTokenChange && onModelTokenChange(stripControlChars(e.target.value))}
-            placeholder="与 api.erishen.cn 的 MODEL_ACCESS_TOKEN 一致"
+            placeholder="仅自定义模型地址需令牌直连时填写"
           />
           <p className="settings-hint">
             当前模型：<b>Firefly</b>（萤火女仆）。该 VRM 的许可为 <code>OnlyAuthor + redistribution=disallow</code>
-            （第三方 VRoid 创作，仅作者可商用 / 再分发），故经 <code>api.erishen.cn/api/models</code> <b>带令牌获取</b>，
-            不开放匿名下载。上面两项默认留空即使用内置默认地址；令牌需与服务端 <code>MODEL_ACCESS_TOKEN</code> 一致，
-            否则模型加载会失败并回退到内置角色。模型文件不随站点公开分发。
+            （第三方 VRoid 创作，仅作者可商用 / 再分发），经 <code>api.erishen.cn</code> <b>服务端代理拉取，浏览器无需令牌</b>。
+            上面两项默认留空即用内置地址；只有当你填了<strong>自定义模型地址</strong>且需令牌直连时才填令牌。
+            模型文件不随站点公开分发。
           </p>
+
+          <div className="settings-row cache-row">
+            <div className="settings-row-text">
+              <div className="settings-row-label">🗄️ 模型缓存</div>
+              <p className="settings-hint">
+                已加载的 VRM 会缓存在本浏览器，刷新可秒开。换模型或想强制重下时点此清除。
+              </p>
+            </div>
+            <button className="clear-btn" onClick={handleClearCache}>
+              清除缓存
+            </button>
+          </div>
+          {cacheMsg && <p className="settings-hint cache-msg">{cacheMsg}</p>}
 
           <div className="settings-actions">
             <button className="test-btn" onClick={onTest}>

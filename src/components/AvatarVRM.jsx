@@ -4,6 +4,7 @@ import { Html } from '@react-three/drei'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
 import * as THREE from 'three'
+import { MODEL_CACHE_NAME } from '../utils/modelCache'
 
 // 手臂下垂（hang-down）：VRM 默认 T-pose（手臂沿身体左右水平张开）。
 // 仅旋转【上臂】绕世界 Z 轴，从水平平举转到近乎垂直贴身（约 80°，略外撇避免穿模躯干）。
@@ -51,7 +52,6 @@ function applyArmPose(bones) {
 // 14.5MB 的 VRM 每次重新下载很慢；用浏览器 Cache API 把解析好的字节按 URL 缓存，
 // 刷新/重进页面时命中缓存即可秒开。缓存 key 用请求 URL（firefly 固定为 /api/model，
 // 不受 5 分钟签名 URL 轮换影响）。隐私模式等不支持 Cache API 时自动降级为每次网络下载。
-const MODEL_CACHE_NAME = 'firefly-vrm-cache-v1'
 
 async function readWithProgress(resp, onProgress) {
   const total = Number(resp.headers.get('Content-Length')) || 0
