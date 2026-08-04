@@ -28,5 +28,17 @@
     "price": 4000.0,
     "is_offer": false,
     "description": "FastAPI / Node.js：RESTful 接口 + 鉴权 + 数据库建模 + 接口文档 + Docker 部署。起步价按范围报价"
+  },
+  {
+    "name": "前端架构与全栈交付咨询",
+    "price": 500.0,
+    "is_offer": false,
+    "description": "前端与小程序的架构取舍、全栈交付方案、AI 工程化落地路径。按项目或按小时报价，联系咨询"
+  },
+  {
+    "name": "自动化脚本与效率工具",
+    "price": 1000.0,
+    "is_offer": false,
+    "description": "数据采集 / 处理流水线、CI/CD、重复工作自动化，按需求定制。起步价按范围报价"
   }
 ]
