@@ -27,12 +27,14 @@ const VRM_AVATAR_URL = '/avatar.vrm'
 const TEST_VRM_URL = '/test.vrm'
 // 萤火女仆：
 //   开发环境直接用本地 public/ 下的模型（无需令牌、离线可用）；
-//   生产环境走 firefly 自己的服务端函数 /api/model —— 该函数用服务端密钥向
-//   api.erishen.cn 换一个限时签名 URL 再 302 跳回，主密钥只存在于服务端环境变量，
-//   14.5MB 模型不经 Vercel（绕开其 4.5MB 响应体上限），且原始地址不再可裸链。
-//   该 VRM 许可 redistribution=disallow，仅供本人经服务端代理获取，请勿匿名公开分发。
+//   生产环境由浏览器经 CORS 直连 api.erishen.cn 拉取 VRM（来源受信即放行，
+//   无需经 Vercel 服务端函数中转——实测 Vercel hkg1 → 国内 VPS 的 server 出网
+//   会被拦/超时，导致 /api/model 返回 504、无痕模式回退默认角色）。
+//   直连 URL 稳定（不含 5 分钟签名轮换），更利于浏览器 Cache API 命中秒开。
+//   该 VRM 许可 redistribution=disallow，服务端按 Origin 来源受信白名单放行，
+//   请勿在其他站点嵌入或匿名公开分发裸链。
 const FIREFLY_VRM_DEV_URL = '/fireflyMaid.vrm'
-const FIREFLY_VRM_PROD_URL = '/api/model'
+const FIREFLY_VRM_PROD_URL = 'https://api.erishen.cn/api/models/fireflyMaid.vrm'
 
 // 场景：灯光 / 粒子 / 地面 / 交互状态
 // speakingRef、bubble、onClick、modelSource 由 App 统一持有
