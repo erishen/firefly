@@ -898,6 +898,8 @@ canvas {
   border: 1px solid rgba(111, 224, 207, 0.2);
   border-radius: 999px;
   flex-shrink: 0;
+  /* .overlay 是 pointer-events:none，交互子元素需各自重新开启，否则点击穿透到 Canvas */
+  pointer-events: auto;
 }
 .lang-btn {
   padding: 4px 12px;
