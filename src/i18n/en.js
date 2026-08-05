@@ -4,7 +4,7 @@
 export const en = {
   // —— Top ——
   title: '✨ Firefly · 3D Avatar',
-  hint: 'Tap "🎤 Speak" or just type below to chat · drag to rotate · her eyes follow you',
+  hint: 'Tap the "Speak" button at the bottom or just type below to chat · drag to rotate · her eyes follow you',
 
   // —— Voice ——
   micSpeak: '🎤 Speak',
