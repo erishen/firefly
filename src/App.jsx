@@ -218,7 +218,7 @@ export default function App() {
                 className={`mic-btn ${status === 'listening' ? 'active' : ''}`}
                 onClick={startListening}
               >
-                🎤 {status === 'listening' ? t('micListening') : t('micSpeak')}
+                {status === 'listening' ? t('micListening') : t('micSpeak')}
               </button>
             ) : (
               <span className="voice-warn">{t('statusUnsupported')}</span>
