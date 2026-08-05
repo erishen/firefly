@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { stripControlChars } from '../utils/sanitize'
 import { clearModelCache } from '../utils/modelCache'
+import { useI18n } from '../i18n'
 
 // 设置面板：仅前端可配置「数字人人格（系统提示词）」；
 // 模型 base/key/model 在服务端 .env，浏览器永远接触不到。
@@ -16,6 +17,7 @@ export default function Settings({
   contact,
   onContactChange,
 }) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const textareaRef = useRef(null)
   const [cacheMsg, setCacheMsg] = useState('')
@@ -32,12 +34,12 @@ export default function Settings({
   // 清除已缓存的模型字节：当前已加载的 VRM 会缓存在本浏览器，
   // 换模型或想强制重下时调用（确认后删除 Cache API 中的缓存）。
   const handleClearCache = async () => {
-    if (!window.confirm('确定清除已缓存的模型文件吗？下次加载会重新下载（约十几秒）。')) return
+    if (!window.confirm(t('confirmClearCache'))) return
     try {
       const ok = await clearModelCache()
-      setCacheMsg(ok ? '已清除，刷新页面后重新下载模型' : '当前浏览器不支持缓存 API，无需清除')
+      setCacheMsg(ok ? t('cacheCleared') : t('cacheNoSupport'))
     } catch (e) {
-      setCacheMsg('清除失败：' + (e && e.message ? e.message : String(e)))
+      setCacheMsg(t('cacheFail') + (e && e.message ? e.message : String(e)))
     }
   }
 
@@ -46,98 +48,88 @@ export default function Settings({
       <button
         className={`gear-btn ${open ? 'active' : ''}`}
         onClick={() => setOpen((o) => !o)}
-        title="设置"
+        title={t('gearTitle')}
       >
         ⚙️
       </button>
       {open && (
         <div className="settings-panel">
           <div className="settings-note">
-            ⚠️ 所有设置仅保存在你自己的浏览器，不会影响其他访客，也不会上传服务器。
+            ⚠️ {t('settingsNote')}
           </div>
-          <label className="settings-label">数字人人格（系统提示词）</label>
+          <label className="settings-label">{t('labelPersona')}</label>
           <textarea
             ref={textareaRef}
             className="settings-textarea"
             value={systemPrompt}
             onChange={(e) => onSystemPromptChange(stripControlChars(e.target.value))}
             rows={8}
-            placeholder="例如：你是一个可爱的中文 AI 助手……"
+            placeholder={t('personaPlaceholder')}
           />
-          <p className="settings-hint">
-            你编辑的只是「人格风格」。底层另有一份<strong>不可编辑的安全约束</strong>（防提示词注入：锁死身份、拒绝有害请求、不暴露系统细节），会随每条消息自动附带，删不掉。
-          </p>
+          <p className="settings-hint" dangerouslySetInnerHTML={{ __html: t('personaHint') }} />
 
-          <label className="settings-label">联系方式（微信）</label>
+          <label className="settings-label">{t('labelContact')}</label>
           <input
             className="settings-input"
             type="text"
             value={contact || ''}
             onChange={(e) => onContactChange && onContactChange(stripControlChars(e.target.value))}
-            placeholder="例如：wxid_xxxxx 或 微信号"
+            placeholder={t('contactPlaceholder')}
           />
-          <p className="settings-hint">
-            这是<strong>主人的联系方式</strong>（默认 <code>erishen</code>）。当对方问「怎么联系你 / 你的微信是多少」时，小菲会主动报出这个微信号（仅被问时才说，不刷屏）。
-            你在这里修改后，小菲就会报<strong>你填的号</strong>——但只存在你自己的浏览器，不影响其他访客，也不上传。
-          </p>
+          <p className="settings-hint" dangerouslySetInnerHTML={{ __html: t('contactHint') }} />
 
           <div className="settings-row cache-row">
             <div className="settings-row-text">
-              <div className="settings-row-label">🗄️ 模型缓存</div>
+              <div className="settings-row-label">{t('cacheLabel')}</div>
               <p className="settings-hint">
-                已加载的 VRM 会缓存在本浏览器，刷新可秒开。换模型或想强制重下时点此清除。
+                {t('cacheHint')}
               </p>
             </div>
             <button className="clear-btn" onClick={handleClearCache}>
-              清除缓存
+              {t('clearCache')}
             </button>
           </div>
           {cacheMsg && <p className="settings-hint cache-msg">{cacheMsg}</p>}
 
           <div className="settings-actions">
             <button className="test-btn" onClick={onTest}>
-              测试连接
+              {t('testBtn')}
             </button>
             <button
               className="clear-btn"
               onClick={() => {
-                if (window.confirm('确定清空全部对话记录吗？此操作不可撤销。')) onClear && onClear()
+                if (window.confirm(t('confirmClearChat'))) onClear && onClear()
               }}
             >
-              清除对话
+              {t('clearChat')}
             </button>
             {testResult && <span className="test-result">{testResult}</span>}
           </div>
 
           {/* 用户位置：浏览器定位授权，仅用于天气查询，回复不点名城市 */}
           <div className="settings-row location-row">
-            <span className="settings-row-label">📍 我的位置</span>
+            <span className="settings-row-label">{t('locLabel')}</span>
             <div className="location-actions">
               <button className="loc-btn" onClick={onRequestLocation}>
-                定位
+                {t('locBtn')}
               </button>
               {location && (
-                <button className="loc-clear" onClick={onClearLocation} title="清除已保存的位置">
-                  清除
+                <button className="loc-clear" onClick={onClearLocation} title={t('locClear')}>
+                  {t('locClear')}
                 </button>
               )}
             </div>
           </div>
-          <p className="settings-hint">
-            {location ? (
-              <>
-                已获取位置（纬度 {location.lat.toFixed(2)}，经度 {location.lon.toFixed(2)}），问天气时小菲会自动使用，且
-                <strong>不会在对话里说出城市名</strong>。
-              </>
-            ) : (
-              '点「定位」授权后，问天气小菲会自动用你的位置，无需报城市名。'
-            )}
-          </p>
+          <p
+            className="settings-hint"
+            dangerouslySetInnerHTML={{
+              __html: location
+                ? t('locHas', { lat: location.lat.toFixed(2), lon: location.lon.toFixed(2) })
+                : t('locNone'),
+            }}
+          />
 
-          <p className="settings-hint">
-            模型配置在服务端 <code>.env</code>（<code>LLM_BASE_URL</code> /{' '}
-            <code>LLM_API_KEY</code> / <code>LLM_MODEL</code>），前端不接触 Key。
-          </p>
+          <p className="settings-hint" dangerouslySetInnerHTML={{ __html: t('modelConfigHint') }} />
         </div>
       )}
     </div>

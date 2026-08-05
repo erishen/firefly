@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { buildSystemPrompt, redactSystemLeak } from '../config/safety'
+import { t } from '../i18n'
 
 // 默认人格：数字人系统提示词（可在界面设置面板覆盖）
 export const DEFAULT_SYSTEM_PROMPT =
@@ -88,7 +89,7 @@ export function useChat({ systemPrompt = DEFAULT_SYSTEM_PROMPT, location = null,
             location: locRef.current || undefined,
           }),
         })
-        if (!res.ok || !res.body) throw new Error(`代理返回异常（HTTP ${res.status}）`)
+        if (!res.ok || !res.body) throw new Error(t('proxyError', { status: res.status }))
 
         const reader = res.body.getReader()
         const dec = new TextDecoder()

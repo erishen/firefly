@@ -5,6 +5,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
 import * as THREE from 'three'
 import { MODEL_CACHE_NAME } from '../utils/modelCache'
+import { useI18n } from '../i18n'
 
 // 手臂下垂（hang-down）：VRM 默认 T-pose（手臂沿身体左右水平张开）。
 // 仅旋转【上臂】绕世界 Z 轴，从水平平举转到近乎垂直贴身（约 80°，略外撇避免穿模躯干）。
@@ -117,6 +118,7 @@ async function loadModelBytes(url, headers, onProgress) {
 // 说明：VRM 默认面向 -Z，组件内已把 scene 旋转 180° 使其面向相机（+Z）。
 
 export default function AvatarVRM({ url, token, speakingRef, blinkRef, onClick }) {
+  const { t } = useI18n()
   const [vrm, setVrm] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -328,7 +330,7 @@ export default function AvatarVRM({ url, token, speakingRef, blinkRef, onClick }
         <Html fullscreen zIndexRange={[200, 0]} style={{ pointerEvents: 'none' }}>
           <div className="vrm-loading">
             <div className="vrm-loading-spinner" />
-            <div className="vrm-loading-title">小菲正在登场…</div>
+            <div className="vrm-loading-title">{t('loadingTitle')}</div>
             {progress > 0 && progress < 100 && (
               <div className="vrm-loading-bar">
                 <span style={{ width: `${progress}%` }} />
@@ -336,10 +338,10 @@ export default function AvatarVRM({ url, token, speakingRef, blinkRef, onClick }
             )}
             <div className="vrm-loading-sub">
               {progress >= 100
-                ? '马上就好 ✨'
+                ? t('loadingDone')
                 : progress > 0
-                  ? `已下载 ${progress}%`
-                  : '首次加载需十几秒，之后会从浏览器缓存秒开'}
+                  ? t('loadingProgress', { p: progress })
+                  : t('loadingFirst')}
             </div>
           </div>
         </Html>

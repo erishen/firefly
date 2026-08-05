@@ -879,3 +879,42 @@ canvas {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* —— 顶部栏：标题 + 语言切换器 —— */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.topbar h1 {
+  margin: 0; /* 覆盖 .overlay h1 的默认 margin，flex 内不再需要 */
+}
+.lang-switch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(111, 224, 207, 0.2);
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.lang-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+.lang-btn:hover {
+  color: var(--text);
+}
+.lang-btn.active {
+  color: #06222a;
+  background: var(--grad-primary);
+  box-shadow: var(--glow-teal);
+}
