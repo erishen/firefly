@@ -226,6 +226,14 @@ canvas {
   flex-shrink: 0;
 }
 
+.voice-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  opacity: 0.72;
+}
+
 /* 文本输入栏 */
 .chatbar {
   margin-top: 4px;

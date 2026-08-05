@@ -9,6 +9,8 @@ export const en = {
   // —— Voice ——
   micSpeak: '🎤 Speak',
   micListening: '🎤 Listening…',
+  micNote:
+    "Speech recognition is powered by the browser's cloud service and may be unstable on mainland China networks — if it fails or does nothing, just type below.",
   statusListening: 'Listening… it auto-detects when you finish',
   statusSpeaking: 'Speaking…',
   statusError:

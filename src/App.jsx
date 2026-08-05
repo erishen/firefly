@@ -225,6 +225,7 @@ export default function App() {
             )}
             {statusText && <span className="voice-status">{statusText}</span>}
           </div>
+          {supported && <p className="voice-note">{t('micNote')}</p>}
           {/* 文本输入：与语音共用 chat.send，国内 STT 被墙时的主要入口。
               默认即就地放大（与对话记录同宽、可纵向拉伸），点 ⤡ 收起、点 ⤢ 再放大。 */}
           <div className={`chatbar ${maximized ? 'expanded' : ''}`}>

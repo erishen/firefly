@@ -8,6 +8,7 @@ export const zh = {
   // —— 语音 ——
   micSpeak: '🎤 说话',
   micListening: '🎤 聆听中…',
+  micNote: '语音识别由浏览器云端服务支持，国内网络可能不稳定；若识别失败或无响应，请直接用下方文字输入',
   statusListening: '聆听中…说完会自动识别',
   statusSpeaking: '朗读中…',
   statusError: '语音识别失败（国内网络可能受限；可点角色试演示，或在设置里配置 LLM 后用文字）',
