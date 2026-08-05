@@ -209,6 +209,9 @@ export default function App() {
               </button>
             ))}
           </div>
+          <a className="back-home" href="https://erishen.cn/" title="erishen.cn">
+            ← {t('backHome')}
+          </a>
         </div>
         <span className="hint">{t('hint')}</span>
         <div className="voicebar">

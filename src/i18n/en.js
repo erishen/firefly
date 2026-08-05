@@ -4,6 +4,7 @@
 export const en = {
   // —— Top ——
   title: '✨ Firefly · 3D Avatar',
+  backHome: 'Back to home',
   hint: 'Tap the "Speak" button at the bottom or just type below to chat · drag to rotate · her eyes follow you',
 
   // —— Voice ——

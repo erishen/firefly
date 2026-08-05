@@ -920,6 +920,29 @@ canvas {
   cursor: pointer;
   transition: color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
 }
+/* 返回主页按钮：与 .lang-switch 同处 .overlay(pointer-events:none)，需各自开 auto */
+.back-home {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--teal, #6fe0cf);
+  text-decoration: none;
+  background: rgba(111, 224, 207, 0.08);
+  border: 1px solid rgba(111, 224, 207, 0.28);
+  border-radius: 999px;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.back-home:hover {
+  background: rgba(111, 224, 207, 0.18);
+  border-color: rgba(111, 224, 207, 0.5);
+  color: var(--teal, #6fe0cf);
+}
 .lang-btn:hover {
   color: var(--text);
 }
