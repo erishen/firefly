@@ -201,29 +201,31 @@ export default function App() {
     <>
       <div className="overlay" ref={overlayRef}>
         <div className="topbar">
-          {/* 返回主页：置于左侧。跟随「当前界面语言」(lang) 回到对应的中/英文首页。
-              入口语言已由 detectInitialLang 按 ?lang= 参数 → 来路 → localStorage 正确判定，
-              故此处直接用当前界面语言即可，既不偏中文也不会被 stale 记忆带偏。 */}
-          <a
-            className="back-home"
-            href={lang === 'en' ? 'https://erishen.cn/home-en/' : 'https://erishen.cn/'}
-            title="erishen.cn"
-          >
-            ← {t('backHome')}
-          </a>
           <h1>{t('title')}</h1>
-          {/* 中英文切换：置于右侧 */}
-          <div className="lang-switch" role="group" aria-label={t('langLabel')}>
-            {LANGS.map((l) => (
-              <button
-                key={l.code}
-                type="button"
-                className={`lang-btn ${lang === l.code ? 'active' : ''}`}
-                onClick={() => handleLangChange(l.code)}
-              >
-                {l.label}
-              </button>
-            ))}
+          <div className="topbar-actions">
+            {/* 返回主页：跟随「当前界面语言」(lang) 回到对应的中/英文首页。
+                入口语言已由 detectInitialLang 按 ?lang= 参数 → 来路 → localStorage 正确判定，
+                故此处直接用当前界面语言即可，既不偏中文也不会被 stale 记忆带偏。 */}
+            <a
+              className="back-home"
+              href={lang === 'en' ? 'https://erishen.cn/home-en/' : 'https://erishen.cn/'}
+              title="erishen.cn"
+            >
+              ← {t('backHome')}
+            </a>
+            {/* 中英文切换 */}
+            <div className="lang-switch" role="group" aria-label={t('langLabel')}>
+              {LANGS.map((l) => (
+                <button
+                  key={l.code}
+                  type="button"
+                  className={`lang-btn ${lang === l.code ? 'active' : ''}`}
+                  onClick={() => handleLangChange(l.code)}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
         <span className="hint">{t('hint')}</span>

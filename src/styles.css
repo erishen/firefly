@@ -888,30 +888,26 @@ canvas {
   to { opacity: 1; }
 }
 
-/* —— 顶部栏：返回主页(左) / 标题(中) / 语言切换(右) —— */
+/* —— 顶部栏：标题独占第一行居中，两个按钮在下一行 —— */
 .topbar {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap; /* 窄屏时按钮换到下一行，标题始终单行 */
-}
-/* 左右两栏等宽(各 flex:1 1 0)，内容分别贴左/贴右；
-   中间标题 flex:0 0 auto，自动落在两栏正中 → 无论按钮宽窄标题都精确居中 */
-.topbar .back-home {
-  flex: 1 1 0;
-  min-width: 0;
-  justify-content: flex-start;
-}
-.topbar .lang-switch {
-  flex: 1 1 0;
-  min-width: 0;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: center; /* 标题与按钮组都水平居中 */
+  gap: 10px;
 }
 .topbar h1 {
-  margin: 0; /* 覆盖 .overlay h1 的默认 margin，flex 内不再需要 */
+  margin: 0; /* 覆盖 .overlay h1 的默认 margin */
+  width: 100%;
+  text-align: center; /* 标题独占第一行、水平居中 */
   white-space: nowrap; /* 防止 "Firefly · 3D 数字人" 在标题内被折行 */
-  flex: 0 0 auto;
-  text-align: center; /* 标题在「返回主页(左)」与「语言切换(右)」之间居中 */
+}
+/* 返回主页 + 语言切换 打包成一组，整组落在第二行并居中 */
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap; /* 窄屏时两按钮仍可换行而不溢出 */
 }
 .lang-switch {
   display: inline-flex;
