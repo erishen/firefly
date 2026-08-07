@@ -7,6 +7,15 @@ import * as THREE from 'three'
 import { MODEL_CACHE_NAME } from '../utils/modelCache'
 import { useI18n } from '../i18n'
 
+// three-vrm 对 VRM0.0 的 LookAtDegreeMap 会打印一条无害警告，屏蔽它避免污染控制台
+if (typeof console !== 'undefined' && console.warn) {
+  const _warn = console.warn.bind(console)
+  console.warn = (...a) => {
+    if (a[0] && typeof a[0] === 'string' && a[0].includes('LookAtDegreeMap')) return
+    _warn(...a)
+  }
+}
+
 // 手臂下垂（hang-down）：VRM 默认 T-pose（手臂沿身体左右水平张开）。
 // 仅旋转【上臂】绕世界 Z 轴，从水平平举转到近乎垂直贴身（约 80°，略外撇避免穿模躯干）。
 // 前臂保持骨骼原生相对姿态（自然垂落），不再做摆动/比划。
@@ -81,11 +90,10 @@ async function loadModelBytes(url, headers, onProgress) {
   try {
     const cache = await caches.open(MODEL_CACHE_NAME)
     const hit = await cache.match(url)
-    if (hit) {
-      if (onProgress) onProgress(100)
-      console.log('[avatar] 命中本地缓存，跳过下载：', url)
-      return hit.arrayBuffer()
-    }
+      if (hit) {
+        if (onProgress) onProgress(100)
+        return hit.arrayBuffer()
+      }
   } catch (_) {
     /* Cache API 不可用时跳过缓存，走网络 */
   }
@@ -178,7 +186,6 @@ export default function AvatarVRM({ url, token, speakingRef, blinkRef, onClick }
         const ver = v.meta && v.meta.metaVersion
         // 采集上臂 base 并下垂（VRM 默认 T-pose 手臂平举）
         const arm = collectArmBones(v)
-        if (arm.length) console.log('[avatar] VRM 手臂下垂生效：', arm.map((b) => b.node.name).join(', '))
         armBonesRef.current = arm
 
         // —— 口型/眨眼驱动方式探测 ——
@@ -222,7 +229,6 @@ export default function AvatarVRM({ url, token, speakingRef, blinkRef, onClick }
         useExprMouthRef.current = hasExpr('aa') || hasExpr('ih')
         useExprBlinkRef.current = hasExpr('blink')
 
-        console.log(`[avatar] VRM 加载成功，metaVersion=${ver || '未知'}；expressionManager 表情数=${v.expressionManager ? v.expressionManager.expressions.length : 0}；口型=${useExprMouthRef.current ? 'expressionManager' : (mouthMesh ? 'morph直通(' + mouthMesh.name + ')' : '无')}；眨眼=${useExprBlinkRef.current ? 'expressionManager' : (blinkMesh ? 'morph直通' : '无')}`)
         setVrm(v)
         setLoading(false)
     }

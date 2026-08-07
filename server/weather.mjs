@@ -22,6 +22,27 @@ function cacheSet(map, key, data, ttl) {
   map.set(key, { expire: Date.now() + ttl, data })
 }
 
+// 带一次瞬时重试的 JSON fetch：地理编码 / 实况天气走公网 Open-Meteo，
+// 经代理偶发早断，单次中断不应直接判失败。
+async function fetchJson(url, dispatcher, ms) {
+  let lastErr
+  for (let i = 0; i < 2; i++) {
+    try {
+      return await fetchWithTimeout(url, { dispatcher: dispatcher || undefined }, ms)
+    } catch (e) {
+      lastErr = e
+      const transient =
+        e?.name === 'AbortError' || /abort|timeout|ECONNRESET|fetch failed/i.test(e?.message || '')
+      if (i < 1 && transient) {
+        await new Promise((r) => setTimeout(r, 300))
+        continue
+      }
+      throw e
+    }
+  }
+  throw lastErr
+}
+
 // WMO 天气代码 → 中文描述
 const WMO = {
   0: '晴', 1: '大致晴朗', 2: '部分多云', 3: '阴',
@@ -79,7 +100,7 @@ export async function fetchWeather(args = {}, dispatcher = pooledAgent) {
         const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
           city.trim(),
         )}&count=1&language=zh&format=json`
-        const geoRes = await fetchWithTimeout(geoUrl, { dispatcher: dispatcher || undefined }, 8000)
+        const geoRes = await fetchJson(geoUrl, dispatcher, 12000)
         if (!geoRes.ok) return { ok: false, error: `地理编码服务返回 ${geoRes.status}` }
         const geo = await geoRes.json()
         const loc = geo.results && geo.results[0]
@@ -105,7 +126,7 @@ export async function fetchWeather(args = {}, dispatcher = pooledAgent) {
       `&longitude=${longitude}` +
       `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m` +
       `&timezone=auto`
-    const fcRes = await fetchWithTimeout(fcUrl, { dispatcher: dispatcher || undefined }, 8000)
+    const fcRes = await fetchJson(fcUrl, dispatcher, 12000)
     if (!fcRes.ok) return { ok: false, error: `天气服务返回 ${fcRes.status}` }
     const fc = await fcRes.json()
     const c = fc.current

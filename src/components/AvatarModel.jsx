@@ -102,7 +102,6 @@ export default function AvatarModel({ url, speakingRef, blinkRef, onClick, hidde
         const newLocal = c.parentWorldQ.clone().invert().multiply(newWorld)
         o.quaternion.copy(newLocal)
       })
-      if (targets.length) console.log('[avatar] relaxArms 生效（下垂+肘弯）:', targets.map((o) => o.name).join(', '))
     }
   }, [scene, hiddenSet, relaxArms])
 

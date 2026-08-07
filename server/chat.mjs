@@ -8,6 +8,8 @@ import { readBody, sse, readSSEStream, createLeadingTrimmer, fetchWithTimeout } 
 import { fetchWeather, WEATHER_TOOL } from './weather.mjs'
 import { fetchItems, ITEMS_TOOL } from './items.mjs'
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
 // 当前启用的工具定义（首轮随请求下发，供模型决策）
 const TOOL_DEFS = [WEATHER_TOOL, ITEMS_TOOL]
 
@@ -35,27 +37,47 @@ function buildRunners(location) {
 }
 
 // 统一上游聊天补全请求（OpenAI 兼容），返回 fetch Response
-async function callUpstream(messages, withTools, toolDefs = TOOL_DEFS) {
-  return fetchWithTimeout(
-    `${BASE.replace(/\/$/, '')}/chat/completions`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${KEY}`,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages,
-        temperature: TEMP,
-        stream: true,
-        ...(withTools ? { tools: toolDefs, tool_choice: 'auto' } : {}),
-      }),
-      // 仅上游 LLM 请求走代理，不影响本地 /api
-      dispatcher: proxyAgent || undefined,
-    },
-    25000,
-  )
+// retries：fetch 阶段（连接建立 / 早期中断）的瞬时重试次数。网关 / 代理长流易断，
+// 一次性中断不应直接判失败 —— 退避后重试可Recovery绝大多数瞬时抖动。
+async function callUpstream(messages, withTools, toolDefs = TOOL_DEFS, retries = 2) {
+  let lastErr
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetchWithTimeout(
+        `${BASE.replace(/\/$/, '')}/chat/completions`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${KEY}`,
+          },
+          body: JSON.stringify({
+            model: MODEL,
+            messages,
+            temperature: TEMP,
+            stream: true,
+            ...(withTools ? { tools: toolDefs, tool_choice: 'auto' } : {}),
+          }),
+          // 仅上游 LLM 请求走代理，不影响本地 /api
+          dispatcher: proxyAgent || undefined,
+        },
+        25000,
+      )
+    } catch (e) {
+      lastErr = e
+      const transient =
+        e?.name === 'AbortError' ||
+        /abort|timeout|ECONNRESET|ENOTFOUND|ECONNREFUSED|fetch failed|certificate|SSL/i.test(
+          `${e?.message || ''} ${e?.code || ''}`,
+        )
+      if (attempt < retries && transient) {
+        await sleep(400 * (attempt + 1)) // 退避：400ms / 800ms
+        continue
+      }
+      throw e
+    }
+  }
+  throw lastErr
 }
 
 // 转发一条 SSE data 给前端，仅对 delta.content 做「前导空白剥离」（流式安全），
@@ -149,41 +171,68 @@ export async function handleChat(req, res) {
 
   try {
     // 3) 首轮：带 tools，流式转发同时采集工具调用
-    const upstream = await callUpstream(llm1Messages, true, round1Tools)
-    if (!upstream.ok) {
-      const errText = await upstream.text()
-      res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8' })
-      sse(res, { error: `模型服务返回 ${upstream.status}：${errText.slice(0, 240)}` })
-      sse(res, '[DONE]')
-      res.end()
-      return
+    //    延迟 writeHead 到「首个真实内容 token」：这样若上游在产出任何内容前中断，
+    //    可安全整轮重试（重连上游），避免向前端重复 / 截断输出。
+    const wroteHead = { v: false }
+    const ensureHead = () => {
+      if (!wroteHead.v) {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        })
+        wroteHead.v = true
+      }
+    }
+    const trimmer = createLeadingTrimmer()
+    const writer = (json) => {
+      ensureHead()
+      writeTrimmed(res, json, trimmer)
     }
 
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    })
-
-    const toolCalls = []
+    let toolCalls = []
     let hasToolCall = false
-    const trimmer = createLeadingTrimmer()
-    await readSSEStream(upstream.body, (json) => {
-      const delta = json.choices?.[0]?.delta
-      // 收集工具调用片段（按 index 拼接 id / name / arguments）
-      if (delta?.tool_calls) {
-        hasToolCall = true
-        for (const tc of delta.tool_calls) {
-          const idx = tc.index ?? 0
-          if (!toolCalls[idx]) toolCalls[idx] = { id: '', name: '', args: '' }
-          if (tc.id) toolCalls[idx].id = tc.id
-          if (tc.function?.name) toolCalls[idx].name += tc.function.name
-          if (tc.function?.arguments) toolCalls[idx].args += tc.function.arguments
+    // 首轮最多重试 1 次（仅当尚未向前端输出任何内容）；fetch 阶段的瞬时中断已由
+    // callUpstream 内部重试覆盖，这里兜底「连上后、出首 token 前」的早断。
+    const MAX1 = 2
+    for (let attempt = 0; attempt < MAX1; attempt++) {
+      try {
+        const up = await callUpstream(llm1Messages, true, round1Tools, 0)
+        if (!up.ok) {
+          const errText = await up.text()
+          ensureHead()
+          sse(res, { error: `模型服务返回 ${up.status}：${errText.slice(0, 240)}` })
+          sse(res, '[DONE]')
+          res.end()
+          return
         }
+        toolCalls = []
+        hasToolCall = false
+        await readSSEStream(up.body, (json) => {
+          const delta = json.choices?.[0]?.delta
+          if (delta?.tool_calls) {
+            hasToolCall = true
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0
+              if (!toolCalls[idx]) toolCalls[idx] = { id: '', name: '', args: '' }
+              if (tc.id) toolCalls[idx].id = tc.id
+              if (tc.function?.name) toolCalls[idx].name += tc.function.name
+              if (tc.function?.arguments) toolCalls[idx].args += tc.function.arguments
+            }
+          }
+          // 工具调用行不透传前端，避免暴露工具 JSON；其余普通内容行实时转发（剥离前导空白）
+          if (!delta?.tool_calls) writer(json)
+        })
+        break // 首轮顺利完成
+      } catch (e) {
+        // 仅当尚未向前端输出任何内容时可安全整轮重试，避免重复 / 截断
+        if (attempt < MAX1 - 1 && !wroteHead.v) {
+          await sleep(400 * (attempt + 1))
+          continue
+        }
+        throw e
       }
-      // 工具调用行不透传前端，避免暴露工具 JSON；其余普通内容行实时转发（剥离前导空白）
-      if (!delta?.tool_calls) writeTrimmed(res, json, trimmer)
-    })
+    }
 
     // 4) 无工具调用 → 首轮即为最终回答，直接结束
     if (!hasToolCall) {
@@ -228,25 +277,28 @@ export async function handleChat(req, res) {
     ]
 
     // 7) 第二轮：不带 tools，取最终自然语言回答流式回前端
+    //    fetch 阶段的瞬时中断由 callUpstream 内部重试覆盖。
     const upstream2 = await callUpstream(secondMessages, false)
     if (!upstream2.ok) {
       const errText = await upstream2.text()
+      ensureHead()
       sse(res, { error: `模型服务返回 ${upstream2.status}：${errText.slice(0, 240)}` })
       sse(res, '[DONE]')
       res.end()
       return
     }
     await readSSEStream(upstream2.body, (json) => {
-      writeTrimmed(res, json, trimmer)
+      writer(json)
     })
     res.end()
   } catch (e) {
     // 上游网络错误：附上常见原因提示，便于排障
     const code = e?.cause?.code || e?.code || ''
-    const msg = e.message || String(e)
-    const hint = /ENOTFOUND|EAI_NONAME|getaddrinfo|ECONNREFUSED/.test(code + msg)
+    const isAbort = e?.name === 'AbortError'
+    const msg = isAbort ? '上游连接中断（网关 / 代理长流易断，已自动重试仍失败）' : e?.message || String(e)
+    const hint = /ENOTFOUND|EAI_NONAME|getaddrinfo|ECONNREFUSED/.test(code + (e?.message || ''))
       ? '（域名无法解析或连接被拒：可能是内网/VPN 专属地址、需连对应网络，或 BASE_URL 拼写有误）'
-      : /ECONNRESET|fetch failed|certificate|SSL/.test(code + msg)
+      : /ECONNRESET|fetch failed|certificate|SSL/.test(code + (e?.message || ''))
       ? '（连接被重置/证书错误：上游可能被墙、需代理访问，或需设置 LLM_PROXY）'
       : ''
     // 若响应头尚未发出（如首轮 upstream 调用即抛错）→ 正常以 200 + SSE 错误帧返回；
