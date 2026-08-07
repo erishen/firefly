@@ -1,14 +1,17 @@
-// Vercel Serverless Function：GET /api/model
-// 服务端代理：用签名密钥向 fastapi-web 换一个限时签名 URL，再 302 把浏览器跳去直连拉取。
+// ⚠️ DEPRECATED / 死代码 —— 勿再调用，下次 Vercel 重新部署前请删除本文件
+// ----------------------------------------------------------------------------
+// 本 Vercel 函数曾是模型分发的一环：浏览器调 /api/model → 本函数用 MODEL_SIGN_SECRET
+// 向 fastapi-web 换限时签名 URL → 302 跳回浏览器直连拉取。
 //
-// 为什么这样设计：
-//   - 14.5MB 的 VRM 若经本函数下载再回传，会撞上 Vercel 函数 4.5MB 响应体上限（413）；
-//     故本函数只换一个 5 分钟有效的签名 URL，浏览器再直连 api.erishen.cn 拉大文件。
-//   - 主密钥 MODEL_SIGN_SECRET 只存在于 Vercel 环境变量，永不进浏览器 bundle；
-//     浏览器最终拿到的只是带 sig/exp 的限时签名 URL。
-//   - 原始模型地址不再可裸链（需有效签名），CORS 仍由 fastapi-web 提供（d319701 已修）。
+// 现状（2026-08-05 重构后）：前端已不再调用本函数。
+//   - 生产环境 Stage.jsx 的 FIREFLY_VRM_PROD_URL 直接 CORS 直连
+//     https://api.erishen.cn/api/models/fireflyMaid.vrm ；
+//   - 后端真实逻辑在 personal/web-services/fastapi-web 的
+//     app/routers/protected_files.py（受信来源 OR 限时签名 URL 鉴权）。
 //
-// 本函数由浏览器同域调用（firefly.erishen.cn/api/model），不需要 CORS 头。
+// 废弃原因：Vercel(hkg1) 到国内 VPS 的服务端出站被拦截/超时，本函数返回 504，
+// 导致无痕模式每次都回退默认角色。改为浏览器直连后消除这一跨境 server→server 跳转。
+// ----------------------------------------------------------------------------
 const BASE = process.env.MODEL_SIGN_BASE || 'https://api.erishen.cn'
 const SECRET = process.env.MODEL_SIGN_SECRET || ''
 
