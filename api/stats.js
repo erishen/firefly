@@ -22,12 +22,14 @@ export default async function handler(req, res) {
 
   const supabase = await getSupabase()
   if (!supabase) {
+    const diag = missingSupabaseEnv()
     res.writeHead(503, { 'Content-Type': 'application/json' })
     res.end(
       JSON.stringify({
         error: 'Supabase not configured',
-        missing: missingSupabaseEnv(),
-        hint: '在 Vercel → firefly → Settings → Environment Variables 添加 SUPABASE_URL 与 SUPABASE_SERVICE_ROLE_KEY（或 SUPABASE_ANON_KEY）；改完需 Redeploy 生效',
+        missing: diag.missing,
+        availableRelatedKeys: diag.availableRelatedKeys,
+        hint: '把 availableRelatedKeys 里的真实变量名贴给我即可精确适配；或确认 Supabase 绑定已注入变量并 Redeploy',
       }),
     )
     return
