@@ -901,13 +901,7 @@ canvas {
   white-space: nowrap; /* 防止 "Firefly · 3D 数字人" 在标题内被折行 */
   flex: 1 1 auto;
   min-width: 0;
-}
-/* 语言切换 + 返回主页 打包成一组，换行至第二行时整体落下、不拆散 */
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
+  text-align: center; /* 标题在「返回主页(左)」与「语言切换(右)」之间居中 */
 }
 .lang-switch {
   display: inline-flex;
