@@ -6,7 +6,7 @@ import { useVoice } from './hooks/useVoice'
 import { useChat, DEFAULT_CONTACT } from './hooks/useChat'
 import Settings from './components/Settings'
 import { stripControlChars } from './utils/sanitize'
-import { useI18n } from './i18n'
+import { useI18n, getReferrerLang } from './i18n'
 import './styles.css'
 
 // 点击角色说的随机台词（无 LLM / 未配置时的兜底演示）——按当前语言取
@@ -215,10 +215,19 @@ export default function App() {
                 </button>
               ))}
             </div>
-            {/* 返回主页：跟随当前应用语言，回到对应的中/英文首页 */}
+            {/* 返回主页：以「来路」(从哪个 erishen.cn 页面进入)为主依据，
+                回到对应的中/英文首页；无来路时回退到当前界面语言。
+                这样从中文首页进来的，点返回就回中文首页，不会被英文记忆带偏。 */}
             <a
               className="back-home"
-              href={lang === 'en' ? 'https://erishen.cn/home-en/' : 'https://erishen.cn/'}
+              href={
+                (() => {
+                  const ref = getReferrerLang()
+                  if (ref === 'en') return 'https://erishen.cn/home-en/'
+                  if (ref === 'zh') return 'https://erishen.cn/'
+                  return lang === 'en' ? 'https://erishen.cn/home-en/' : 'https://erishen.cn/'
+                })()
+              }
               title="erishen.cn"
             >
               ← {t('backHome')}

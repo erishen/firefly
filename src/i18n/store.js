@@ -12,8 +12,26 @@ const DICTS = { zh, en }
 const DEFAULT_LANG = 'zh'
 const STORAGE_KEY = 'firefly-lang'
 
-// 模块加载时即确定初始语言：URL 参数 ?lang= 优先（便于从外部站点的英文入口直达英文态），
-// 其次 localStorage，最后回退默认 zh。带 ?lang= 时顺手写入 localStorage，使后续访问保持该语言。
+// 根据来路(从哪个 erishen.cn 页面进入)推断入口语言：
+// - 来自 /home-en/ → 英文
+// - 来自 erishen.cn 的其它页面(含中文首页 /)→ 中文
+// - 非本站点来路或无法判定 → null(交给后续 localStorage / 默认语言)
+// 用途：让 Firefly 的语言跟随"你从哪个 WordPress 页面进来"，而不是被一次英文入口写死的
+// localStorage 永久带偏（否则从中文首页点进来也会显示英文）。
+export function getReferrerLang() {
+  try {
+    const r = document.referrer || ''
+    if (!r.includes('erishen.cn')) return null
+    if (r.includes('/home-en/')) return 'en'
+    return 'zh'
+  } catch {
+    return null
+  }
+}
+
+// 模块加载时即确定初始语言：URL 参数 ?lang= 优先(便于从外部站点的英文入口直达英文态)，
+// 其次「来路」(从哪个 erishen.cn 页面进入)，再次 localStorage(用户手动切换的记忆)，
+// 最后回退默认 zh。带 ?lang= 时顺手写入 localStorage，使后续访问保持该语言。
 function detectInitialLang() {
   try {
     const p = new URLSearchParams(window.location.search).get('lang')
@@ -22,6 +40,10 @@ function detectInitialLang() {
       return p
     }
   } catch {}
+  // 来路优先于 localStorage：从中文首页进就显示中文，从英文落地页进就显示英文，
+  // 避免曾被英文入口写入的 localStorage 把"从中文首页进入"也传染成英文。
+  const ref = getReferrerLang()
+  if (ref) return ref
   try {
     const v = localStorage.getItem(STORAGE_KEY)
     return v && DICTS[v] ? v : DEFAULT_LANG

@@ -8,4 +8,4 @@ export function useI18n() {
   return { lang, setLang, t: (k, v) => t(k, v), LANGS }
 }
 
-export { t, getLang, setLang, LANGS } from './store'
+export { t, getLang, setLang, LANGS, getReferrerLang } from './store'
