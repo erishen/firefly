@@ -888,19 +888,29 @@ canvas {
   to { opacity: 1; }
 }
 
-/* —— 顶部栏：标题 + 语言切换器 —— */
+/* —— 顶部栏：返回主页(左) / 标题(中) / 语言切换(右) —— */
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap; /* 窄屏时把语言/返回按钮整体换到下一行，标题始终单行 */
+  flex-wrap: wrap; /* 窄屏时按钮换到下一行，标题始终单行 */
+}
+/* 左右两栏等宽(各 flex:1 1 0)，内容分别贴左/贴右；
+   中间标题 flex:0 0 auto，自动落在两栏正中 → 无论按钮宽窄标题都精确居中 */
+.topbar .back-home {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: flex-start;
+}
+.topbar .lang-switch {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: flex-end;
 }
 .topbar h1 {
   margin: 0; /* 覆盖 .overlay h1 的默认 margin，flex 内不再需要 */
   white-space: nowrap; /* 防止 "Firefly · 3D 数字人" 在标题内被折行 */
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
   text-align: center; /* 标题在「返回主页(左)」与「语言切换(右)」之间居中 */
 }
 .lang-switch {
