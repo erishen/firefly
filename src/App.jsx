@@ -202,21 +202,28 @@ export default function App() {
       <div className="overlay" ref={overlayRef}>
         <div className="topbar">
           <h1>{t('title')}</h1>
-          <div className="lang-switch" role="group" aria-label={t('langLabel')}>
-            {LANGS.map((l) => (
-              <button
-                key={l.code}
-                type="button"
-                className={`lang-btn ${lang === l.code ? 'active' : ''}`}
-                onClick={() => handleLangChange(l.code)}
-              >
-                {l.label}
-              </button>
-            ))}
+          <div className="topbar-actions">
+            <div className="lang-switch" role="group" aria-label={t('langLabel')}>
+              {LANGS.map((l) => (
+                <button
+                  key={l.code}
+                  type="button"
+                  className={`lang-btn ${lang === l.code ? 'active' : ''}`}
+                  onClick={() => handleLangChange(l.code)}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+            {/* 返回主页：跟随当前应用语言，回到对应的中/英文首页 */}
+            <a
+              className="back-home"
+              href={lang === 'en' ? 'https://erishen.cn/home-en/' : 'https://erishen.cn/'}
+              title="erishen.cn"
+            >
+              ← {t('backHome')}
+            </a>
           </div>
-          <a className="back-home" href="https://erishen.cn/" title="erishen.cn">
-            ← {t('backHome')}
-          </a>
         </div>
         <span className="hint">{t('hint')}</span>
         <div className="voicebar">

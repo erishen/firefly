@@ -894,9 +894,20 @@ canvas {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap; /* 窄屏时把语言/返回按钮整体换到下一行，标题始终单行 */
 }
 .topbar h1 {
   margin: 0; /* 覆盖 .overlay h1 的默认 margin，flex 内不再需要 */
+  white-space: nowrap; /* 防止 "Firefly · 3D 数字人" 在标题内被折行 */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* 语言切换 + 返回主页 打包成一组，换行至第二行时整体落下、不拆散 */
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
 }
 .lang-switch {
   display: inline-flex;
