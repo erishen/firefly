@@ -7,10 +7,12 @@
 //   来自 Vercel 提供的 x-vercel-ip-country，本地开发为 local）/
 //   anon（不透明随机会话 ID，首方 HttpOnly cookie ff_sid，仅用于去重独立访客）/
 //   ok（是否成功）
-// 存储（两路，均失败不影响主流程）：
+// 存储（多路，均失败不影响主流程）：
 //   1) Vercel 函数标准输出 → 实时可见（Dashboard / `vercel logs`）
 //   2) Upstash Redis 列表 `firefly:usage` → 持久化、可检索/导出
 //      （Vercel Marketplace 的 Upstash Redis 集成，注入 UPSTASH_REDIS_REST_URL/TOKEN）
+//   3) Supabase 表 `usage_events` → 关系型、适合 SQL 统计（Vercel Marketplace 集成，
+//      注入 SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY；服务端用 service_role 绕过 RLS）
 import { randomUUID } from 'node:crypto'
 
 const SID_COOKIE = 'ff_sid'
@@ -31,6 +33,24 @@ function getRedis() {
     return Redis.fromEnv()
   })()
   return redisPromise
+}
+
+// 懒加载 Supabase 服务端客户端：仅当 SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY 齐全时才
+// import + 实例化；否则返回 null → 自动降级为「仅 console / Redis」，绝不拖垮主流程。
+// 用 service_role key 可绕过 RLS，适合可信服务端写入；请勿在前端暴露该 key。
+let supabasePromise = null
+function getSupabase() {
+  if (supabasePromise) return supabasePromise
+  supabasePromise = (async () => {
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return null
+    }
+    const { createClient } = await import('@supabase/supabase-js')
+    return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+  })()
+  return supabasePromise
 }
 
 function parseCookies(str) {
@@ -70,22 +90,37 @@ export async function logUsage(req, res, { endpoint, ok = true } = {}) {
     return // 连 cookie 都读不出就不记录，绝不阻塞主流程
   }
 
-  const event = JSON.stringify({ ts: new Date().toISOString(), endpoint, country, anon, ok })
+  const row = { ts: new Date().toISOString(), endpoint, country, anon, ok }
 
   // 1) 标准输出（实时可见）
-  console.log(`[usage] ${event}`)
+  console.log(`[usage] ${JSON.stringify(row)}`)
 
-  // 2) 追加到 Upstash Redis（持久化、可检索/导出）
-  //    未配置 Upstash Redis 集成时 getRedis() 返回 null → 仅保留 console 日志。
+  // 2) + 3) 多路落盘：Upstash Redis（list）与 Supabase（表）并行写入，
+  //    任一路未配置或失败都静默跳过，绝不阻塞主流程。
   try {
-    const redis = await getRedis()
+    const [redis, supabase] = await Promise.all([getRedis(), getSupabase()])
+    const tasks = []
     if (redis) {
       // lpush 头插，index 0 最新
-      await redis.lpush(REDIS_LIST_KEY, event)
-      // 控制列表长度，避免无限增长（保留前 REDIS_MAX_LEN 条）
-      await redis.ltrim(REDIS_LIST_KEY, 0, REDIS_MAX_LEN - 1).catch(() => {})
+      tasks.push(
+        redis
+          .lpush(REDIS_LIST_KEY, JSON.stringify(row))
+          // 控制列表长度，避免无限增长（保留前 REDIS_MAX_LEN 条）
+          .then(() => redis.ltrim(REDIS_LIST_KEY, 0, REDIS_MAX_LEN - 1).catch(() => {}))
+      )
     }
+    if (supabase) {
+      tasks.push(
+        supabase
+          .from('usage_events')
+          .insert(row)
+          .then(({ error }) => {
+            if (error) console.warn('[usage] supabase insert failed:', error.message)
+          })
+      )
+    }
+    await Promise.allSettled(tasks)
   } catch {
-    // Redis 未配置 / 网络失败：静默跳过
+    // 存储未配置 / 网络失败：静默跳过
   }
 }
