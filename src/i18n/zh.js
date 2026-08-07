@@ -91,6 +91,7 @@ export const zh = {
 
   // —— 错误 ——
   proxyError: '代理返回异常（HTTP {status}）',
+  requestTimeout: '小菲响应超时（{seconds} 秒），可能是网络较慢或上游繁忙，请稍后再试一次',
 
   // —— 语言切换 ——
   langLabel: '语言',

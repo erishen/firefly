@@ -79,6 +79,14 @@ export function useChat({ systemPrompt = DEFAULT_SYSTEM_PROMPT, location = null,
       ]
       setStreaming(true)
       let full = ''
+      // 前端总体超时兜底：后端迟迟不回响应头（如天气预取卡住 / Vercel 函数超时腰斩），
+      // 默认 20s 无首字节则中止并提示，避免界面永久转圈「卡着」。
+      const timeoutMs =
+        typeof process !== 'undefined' && process.env && Number(process.env.FIREFLY_REQ_TIMEOUT)
+          ? Number(process.env.FIREFLY_REQ_TIMEOUT)
+          : 20000
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs)
       try {
         const res = await fetch('/api/chat', {
           method: 'POST',
@@ -88,7 +96,9 @@ export function useChat({ systemPrompt = DEFAULT_SYSTEM_PROMPT, location = null,
             // 用户位置（已授权定位时）：仅服务端天气兜底用，不进多轮历史
             location: locRef.current || undefined,
           }),
+          signal: ctrl.signal,
         })
+        clearTimeout(timer)
         if (!res.ok || !res.body) throw new Error(t('proxyError', { status: res.status }))
 
         const reader = res.body.getReader()
@@ -133,6 +143,14 @@ export function useChat({ systemPrompt = DEFAULT_SYSTEM_PROMPT, location = null,
         cbRef.current.onDone && cbRef.current.onDone(safeFull)
         return safeFull
       } catch (e) {
+        clearTimeout(timer)
+        if (e?.name === 'AbortError') {
+          // 超时中止（含 Vercel 函数被腰斩时的连接断开）→ 友好提示而非报错堆栈
+          cbRef.current.onError &&
+            cbRef.current.onError(t('requestTimeout', { seconds: Math.round(timeoutMs / 1000) }))
+          setStreaming(false)
+          return ''
+        }
         setStreaming(false)
         cbRef.current.onError && cbRef.current.onError(e.message || String(e))
         return ''

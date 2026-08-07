@@ -2,7 +2,7 @@
 // 流程：先地理编码拿到经纬度，再查实时天气，返回给模型一段结构化简述。
 // 全程在服务端完成，浏览器只看到同源 /api/weather；如需换成需 Key 的提供商，改这里即可。
 import { proxyAgent, pooledAgent } from './config.mjs'
-import { fetchWithTimeout } from './httpUtils.mjs'
+import { fetchWithTimeout, dbg } from './httpUtils.mjs'
 
 // 天气/地理编码结果的内存缓存（随同一函数实例存活，Vercel 冷启动会清空，可接受）。
 // 天气变化缓慢，按经纬度缓存 10 分钟可让重复提问（demo 最常见）近乎瞬时；
@@ -70,6 +70,13 @@ function wmoText(code) {
 // 返回 { ok, summary?, city?, raw?, error? }
 export async function fetchWeather(args = {}, dispatcher = pooledAgent) {
   const { city, lat, lon, location } = args
+  const t0 = Date.now()
+  dbg('weather', 'start', {
+    city: city || undefined,
+    hasLL: typeof lat === 'number' && typeof lon === 'number',
+    hasLoc: !!(location && typeof location.lat === 'number'),
+    viaProxy: !!dispatcher,
+  })
   let latitude
   let longitude
   if (typeof lat === 'number' && typeof lon === 'number') {
@@ -100,7 +107,9 @@ export async function fetchWeather(args = {}, dispatcher = pooledAgent) {
         const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
           city.trim(),
         )}&count=1&language=zh&format=json`
+        const geoT0 = Date.now()
         const geoRes = await fetchJson(geoUrl, dispatcher, 12000)
+        dbg('weather', 'geocode', geoRes.status, `${Date.now() - geoT0}ms`)
         if (!geoRes.ok) return { ok: false, error: `地理编码服务返回 ${geoRes.status}` }
         const geo = await geoRes.json()
         const loc = geo.results && geo.results[0]
@@ -119,14 +128,19 @@ export async function fetchWeather(args = {}, dispatcher = pooledAgent) {
 
     const fcKey = `${latitude.toFixed(2)},${longitude.toFixed(2)}`
     const fcHit = cacheGet(forecastCache, fcKey)
-    if (fcHit) return fcHit
+    if (fcHit) {
+      dbg('weather', 'forecast CACHE HIT', fcKey, `${Date.now() - t0}ms`)
+      return fcHit
+    }
 
     const fcUrl =
       `https://api.open-meteo.com/v1/forecast?latitude=${latitude}` +
       `&longitude=${longitude}` +
       `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m` +
       `&timezone=auto`
+    const fcT0 = Date.now()
     const fcRes = await fetchJson(fcUrl, dispatcher, 12000)
+    dbg('weather', 'forecast', fcRes.status, `${Date.now() - fcT0}ms`)
     if (!fcRes.ok) return { ok: false, error: `天气服务返回 ${fcRes.status}` }
     const fc = await fcRes.json()
     const c = fc.current
@@ -142,6 +156,7 @@ export async function fetchWeather(args = {}, dispatcher = pooledAgent) {
     return result
   } catch (e) {
     const isTimeout = e?.name === 'AbortError'
+    dbg('weather', 'FAILED', isTimeout ? 'timeout' : String(e?.message || e).slice(0, 160), `${Date.now() - t0}ms`)
     return {
       ok: false,
       error: isTimeout ? '天气服务请求超时（上游未响应）' : `天气查询失败：${e?.message || String(e)}`,

@@ -97,6 +97,7 @@ export const en = {
 
   // —— Errors ——
   proxyError: 'Proxy returned an error (HTTP {status})',
+  requestTimeout: 'Fei did not respond within {seconds}s — the network may be slow or upstream is busy. Please try again.',
 
   // —— Language switch ——
   langLabel: 'Language',

@@ -110,3 +110,13 @@ export async function fetchWithTimeout(url, opts = {}, ms = 8000) {
     clearTimeout(timer)
   }
 }
+
+// 服务端诊断日志：带 HH:mm:ss.mmm 时间戳 + 模块标签。
+// Vercel 上进入函数 Runtime 日志（Vercel 控制台 Functions → 该函数 → Logs，或 `vercel logs`）；
+// 本地 dev 进终端。默认开启；生产稳定后可设环境变量 FIREFLY_DEBUG=0 关闭，降低日志量。
+//   tag 模块名（'chat' | 'weather' | 'upstream' ...），args 任意需打印的内容。
+export function dbg(tag, ...args) {
+  if (process.env.FIREFLY_DEBUG === '0') return
+  const ts = new Date().toISOString().slice(11, 23) // HH:mm:ss.mmm
+  console.log(`[firefly:${tag}][${ts}]`, ...args)
+}

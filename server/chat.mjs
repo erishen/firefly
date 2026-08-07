@@ -4,7 +4,7 @@
 // 若模型决定调用 → 本服务端执行对应工具 → 把结果作为 tool 消息回填 →
 // 做第二轮（不带 tools）请求，把最终自然语言回答流式回前端。前端零改动。
 import { BASE, KEY, MODEL, TEMP, proxyAgent, pooledAgent } from './config.mjs'
-import { readBody, sse, readSSEStream, createLeadingTrimmer, fetchWithTimeout } from './httpUtils.mjs'
+import { readBody, sse, readSSEStream, createLeadingTrimmer, fetchWithTimeout, dbg } from './httpUtils.mjs'
 import { fetchWeather, WEATHER_TOOL } from './weather.mjs'
 import { fetchItems, ITEMS_TOOL } from './items.mjs'
 
@@ -43,6 +43,7 @@ async function callUpstream(messages, withTools, toolDefs = TOOL_DEFS, retries =
   let lastErr
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
+      dbg('upstream', `attempt ${attempt + 1}/${retries + 1}`, withTools ? '[tools]' : '[no-tools]')
       return await fetchWithTimeout(
         `${BASE.replace(/\/$/, '')}/chat/completions`,
         {
@@ -71,6 +72,7 @@ async function callUpstream(messages, withTools, toolDefs = TOOL_DEFS, retries =
           `${e?.message || ''} ${e?.code || ''}`,
         )
       if (attempt < retries && transient) {
+        dbg('upstream', `retry after ${e?.name || e?.message}`)
         await sleep(400 * (attempt + 1)) // 退避：400ms / 800ms
         continue
       }
@@ -124,7 +126,9 @@ export async function handleChat(req, res) {
     const wArgs = cityMatch ? { city: cityMatch[1] } : location ? { location } : null
     if (wArgs) {
       try {
+        const wt0 = Date.now()
         const w = await fetchWeather(wArgs)
+        dbg('chat', 'weather-prefetch', w.ok ? 'ok' : 'fail', `${Date.now() - wt0}ms`, w.ok ? undefined : String(w.error || '').slice(0, 80))
         if (w.ok) {
           weatherContext = `\n[系统天气上下文，请据此直接回答用户，不要再调用天气工具] ${w.summary}`
           round1Tools = TOOL_DEFS.filter((t) => t.function.name !== WEATHER_TOOL.function.name)
@@ -140,6 +144,11 @@ export async function handleChat(req, res) {
   // 把整体耗时从「LLM1+商品+LLM2」压到「商品+LLM1」，规避 Vercel Hobby 10s 腰斩
   // （表现为「问商品没返回 / 没获取到」）。
   const itemsIntent = !!lastUserMsg && ITEMS_INTENT_RE.test(lastUserMsg.content || '')
+  dbg('chat', 'intent', {
+    weather: weatherIntent,
+    items: itemsIntent,
+    city: weatherIntent ? (lastUserMsg.content || '').match(CITY_RE)?.[1] ?? null : undefined,
+  })
   let itemsContext = ''
   if (itemsIntent) {
     try {
@@ -170,6 +179,7 @@ export async function handleChat(req, res) {
   }
 
   try {
+    const tStart = Date.now()
     // 3) 首轮：带 tools，流式转发同时采集工具调用
     //    延迟 writeHead 到「首个真实内容 token」：这样若上游在产出任何内容前中断，
     //    可安全整轮重试（重连上游），避免向前端重复 / 截断输出。
@@ -185,7 +195,15 @@ export async function handleChat(req, res) {
       }
     }
     const trimmer = createLeadingTrimmer()
+    let firstTokenAt = 0
     const writer = (json) => {
+      if (!firstTokenAt) {
+        const d = json?.choices?.[0]?.delta
+        if (d?.content) {
+          firstTokenAt = Date.now()
+          dbg('chat', 'first-token', `${firstTokenAt - tStart}ms`)
+        }
+      }
       ensureHead()
       writeTrimmed(res, json, trimmer)
     }
@@ -197,6 +215,7 @@ export async function handleChat(req, res) {
     const MAX1 = 2
     for (let attempt = 0; attempt < MAX1; attempt++) {
       try {
+        dbg('chat', 'round1 upstream', round1Tools.map((t) => t.function.name).join(',') || 'none')
         const up = await callUpstream(llm1Messages, true, round1Tools, 0)
         if (!up.ok) {
           const errText = await up.text()
@@ -223,6 +242,7 @@ export async function handleChat(req, res) {
           // 工具调用行不透传前端，避免暴露工具 JSON；其余普通内容行实时转发（剥离前导空白）
           if (!delta?.tool_calls) writer(json)
         })
+        dbg('chat', 'round1 done', hasToolCall ? 'with-tool' : 'plain', `${Date.now() - tStart}ms`)
         break // 首轮顺利完成
       } catch (e) {
         // 仅当尚未向前端输出任何内容时可安全整轮重试，避免重复 / 截断
@@ -236,6 +256,7 @@ export async function handleChat(req, res) {
 
     // 4) 无工具调用 → 首轮即为最终回答，直接结束
     if (!hasToolCall) {
+      dbg('chat', 'done(plain)', `${Date.now() - tStart}ms`)
       res.end()
       return
     }
@@ -278,6 +299,7 @@ export async function handleChat(req, res) {
 
     // 7) 第二轮：不带 tools，取最终自然语言回答流式回前端
     //    fetch 阶段的瞬时中断由 callUpstream 内部重试覆盖。
+    dbg('chat', 'round2 upstream')
     const upstream2 = await callUpstream(secondMessages, false)
     if (!upstream2.ok) {
       const errText = await upstream2.text()
@@ -290,9 +312,11 @@ export async function handleChat(req, res) {
     await readSSEStream(upstream2.body, (json) => {
       writer(json)
     })
+    dbg('chat', 'done', `${Date.now() - tStart}ms`)
     res.end()
   } catch (e) {
     // 上游网络错误：附上常见原因提示，便于排障
+    dbg('chat', 'ERROR', e?.name || e?.message, String(e?.stack || e).slice(0, 200))
     const code = e?.cause?.code || e?.code || ''
     const isAbort = e?.name === 'AbortError'
     const msg = isAbort ? '上游连接中断（网关 / 代理长流易断，已自动重试仍失败）' : e?.message || String(e)
