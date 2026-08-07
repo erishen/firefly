@@ -16,6 +16,11 @@ export default function App() {
   const [bubble, setBubble] = useState({ text: '', visible: false, who: 'ai' })
   const speakToken = useRef(0) // 防止连点时旧朗读的 onEnd 误关气泡
   const [systemPrompt, setSystemPrompt] = useState(() => t('defaultPersona'))
+
+  // 同步 <html lang> 属性，便于 SEO / 无障碍（随界面语言变化）
+  useEffect(() => {
+    document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN'
+  }, [lang])
   const [testResult, setTestResult] = useState('')
   const [modelSource, setModelSource] = useState('firefly') // 'avaturn' / 'rpm'(avatar.glb) / 'model'(model.glb) / 'vrm'(avatar.vrm, VRoid) / 'test'(test.vrm) / 'firefly'(fireflyMaid.vrm)
 
