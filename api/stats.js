@@ -2,7 +2,7 @@
 // 受保护的使用统计汇总：累计独立访客 / 今日各功能调用次数 / 国家 Top10 / 近 7 日趋势。
 // 鉴权：Authorization: Bearer <STATS_API_KEY>（STATS_API_KEY 在 Vercel 环境变量配置）。
 // 未配置 STATS_API_KEY 时一律 401，避免未授权暴露数据。
-import { getSupabase } from '../server/supabase.mjs'
+import { getSupabase, missingSupabaseEnv } from '../server/supabase.mjs'
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -23,7 +23,13 @@ export default async function handler(req, res) {
   const supabase = await getSupabase()
   if (!supabase) {
     res.writeHead(503, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ error: 'Supabase not configured' }))
+    res.end(
+      JSON.stringify({
+        error: 'Supabase not configured',
+        missing: missingSupabaseEnv(),
+        hint: '在 Vercel → firefly → Settings → Environment Variables 添加 SUPABASE_URL 与 SUPABASE_SERVICE_ROLE_KEY（或 SUPABASE_ANON_KEY）；改完需 Redeploy 生效',
+      }),
+    )
     return
   }
 

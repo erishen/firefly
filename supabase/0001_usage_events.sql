@@ -16,8 +16,8 @@ create index if not exists usage_events_ts_idx        on usage_events (ts desc);
 create index if not exists usage_events_anon_idx      on usage_events (anon);
 create index if not exists usage_events_endpoint_idx  on usage_events (endpoint);
 
--- 说明：服务端用 SUPABASE_SERVICE_ROLE_KEY 写入，自动绕过 RLS，无需额外策略。
--- 若改用 anon key 写入，则需为 usage_events 配置允许 insert 的 RLS 策略（不推荐）。
+-- 说明：服务端优先用 SUPABASE_SERVICE_ROLE_KEY 写入（绕过 RLS）；若缺失则回退
+-- SUPABASE_ANON_KEY。本表未启用 RLS，故两种 key 读写等价，无需额外策略。
 
 -- ===== 示例统计查询 =====
 
