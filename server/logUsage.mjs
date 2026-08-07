@@ -14,6 +14,7 @@
 //   3) Supabase 表 `usage_events` → 关系型、适合 SQL 统计（Vercel Marketplace 集成，
 //      注入 SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY；服务端用 service_role 绕过 RLS）
 import { randomUUID } from 'node:crypto'
+import { getSupabase } from './supabase.mjs'
 
 const SID_COOKIE = 'ff_sid'
 const SID_MAX_AGE = 60 * 60 * 24 * 365 // 1 年
@@ -35,23 +36,7 @@ function getRedis() {
   return redisPromise
 }
 
-// 懒加载 Supabase 服务端客户端：仅当 SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY 齐全时才
-// import + 实例化；否则返回 null → 自动降级为「仅 console / Redis」，绝不拖垮主流程。
-// 用 service_role key 可绕过 RLS，适合可信服务端写入；请勿在前端暴露该 key。
-let supabasePromise = null
-function getSupabase() {
-  if (supabasePromise) return supabasePromise
-  supabasePromise = (async () => {
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      return null
-    }
-    const { createClient } = await import('@supabase/supabase-js')
-    return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    })
-  })()
-  return supabasePromise
-}
+// 懒加载 Supabase 服务端客户端见 ./supabase.mjs（本文件仅 import 复用）。
 
 function parseCookies(str) {
   const out = {}
