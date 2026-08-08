@@ -43,6 +43,23 @@ async function fetchJson(url, dispatcher, ms) {
   throw lastErr
 }
 
+// 反向地理编码：经纬度 → 城市名（用于定位场景，让回答带上城市名；失败则留空不影响天气）
+// 用 BigDataCloud 免费免 Key 接口；偶发失败静默返回空串。
+async function reverseGeocode(lat, lon, dispatcher) {
+  try {
+    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=zh`
+    const res = await fetchJson(url, dispatcher, 10000)
+    if (!res.ok) return ''
+    const j = await res.json()
+    const city = j.city || j.locality || j.principalSubdivision || ''
+    const country = j.countryName || ''
+    if (city && country) return `${city}（${country}）`
+    return city || country || ''
+  } catch {
+    return ''
+  }
+}
+
 // WMO 天气代码 → 中文描述
 const WMO = {
   0: '晴', 1: '大致晴朗', 2: '部分多云', 3: '阴',
@@ -62,42 +79,45 @@ function wmoText(code) {
 }
 
 // 查询实时天气。
-//   args.city            城市名（地理编码用）
-//   args.lat/lon         用户经纬度（已知时优先直查，跳过地理编码）
+//   args.city            城市名（地理编码用；缺省且未给定位时回退「上海」）
+//   args.lat/lon         用户经纬度（已知时优先直查，并反向地理编码出城市名）
 //   args.location        {lat, lon} 兜底：用户已授权定位但未传经纬度时使用
 // 优先级：lat/lon → location → city 地理编码。
-// 无 cityName（定位直查场景）则不写城市行，呼应「回复不点名城市」。
-// 返回 { ok, summary?, city?, raw?, error? }
+// 未提供城市也未提供定位/坐标时，默认查询「上海」，保证「问天气」永远有结果。
+// 返回 { ok, summary?, city?, raw?, error? }；summary 含「城市：xxx」一行。
 export async function fetchWeather(args = {}, dispatcher = proxyAgent) {
   const { city, lat, lon, location } = args
+  const hasCoord = typeof lat === 'number' && typeof lon === 'number'
+  const hasLoc = !!(location && typeof location.lat === 'number' && typeof location.lon === 'number')
+  // 默认城市：未给城市、也未给定位/坐标 → 回退上海
+  let useCity = city && city.trim() ? city.trim() : null
+  if (!useCity && !hasCoord && !hasLoc) useCity = '上海'
+
   const t0 = Date.now()
   dbg('weather', 'start', {
-    city: city || undefined,
-    hasLL: typeof lat === 'number' && typeof lon === 'number',
-    hasLoc: !!(location && typeof location.lat === 'number'),
+    city: useCity || undefined,
+    hasCoord,
+    hasLoc,
     viaProxy: !!dispatcher,
   })
   let latitude
   let longitude
-  if (typeof lat === 'number' && typeof lon === 'number') {
+  if (hasCoord) {
     latitude = lat
     longitude = lon
-  } else if (location && typeof location.lat === 'number' && typeof location.lon === 'number') {
+  } else if (hasLoc) {
     latitude = location.lat
     longitude = location.lon
   }
 
   try {
     let cityName = ''
-    // 有经纬度 → 直接查天气，跳过地理编码（定位场景，不暴露城市名）
-    if (typeof latitude === 'number' && typeof longitude === 'number') {
-      // cityName 保持空
+    if (hasCoord || hasLoc) {
+      // 定位/坐标场景：反向地理编码拿城市名（失败留空，不影响天气本身）
+      cityName = await reverseGeocode(latitude, longitude, dispatcher)
     } else {
-      // 否则需要 city 做地理编码
-      if (!city || !city.trim()) {
-        return { ok: false, error: '未提供城市或经纬度，无法查询天气' }
-      }
-      const geoKey = city.trim().toLowerCase()
+      // 城市名场景：地理编码
+      const geoKey = useCity.toLowerCase()
       const geoHit = cacheGet(geocodeCache, geoKey)
       if (geoHit) {
         latitude = geoHit.lat
@@ -105,7 +125,7 @@ export async function fetchWeather(args = {}, dispatcher = proxyAgent) {
         cityName = geoHit.name + (geoHit.country ? `（${geoHit.country}）` : '')
       } else {
         const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
-          city.trim(),
+          useCity,
         )}&count=1&language=zh&format=json`
         const geoT0 = Date.now()
         const geoRes = await fetchJson(geoUrl, dispatcher, 12000)
@@ -113,7 +133,7 @@ export async function fetchWeather(args = {}, dispatcher = proxyAgent) {
         if (!geoRes.ok) return { ok: false, error: `地理编码服务返回 ${geoRes.status}` }
         const geo = await geoRes.json()
         const loc = geo.results && geo.results[0]
-        if (!loc) return { ok: false, error: `找不到城市「${city}」，请换个城市名或写法试试` }
+        if (!loc) return { ok: false, error: `找不到城市「${useCity}」，请换个城市名或写法试试` }
         latitude = loc.latitude
         longitude = loc.longitude
         cityName = loc.name + (loc.country ? `（${loc.country}）` : '')

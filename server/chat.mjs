@@ -123,14 +123,15 @@ export async function handleChat(req, res) {
   let round1Tools = TOOL_DEFS
   if (weatherIntent) {
     const cityMatch = (lastUserMsg.content || '').match(CITY_RE)
-    const wArgs = cityMatch ? { city: cityMatch[1] } : location ? { location } : null
+    // 无城市且未授权定位 → 默认上海；其余保持原逻辑
+    const wArgs = cityMatch ? { city: cityMatch[1] } : location ? { location } : { city: '上海' }
     if (wArgs) {
       try {
         const wt0 = Date.now()
         const w = await fetchWeather(wArgs)
         dbg('chat', 'weather-prefetch', w.ok ? 'ok' : 'fail', `${Date.now() - wt0}ms`, w.ok ? undefined : String(w.error || '').slice(0, 80))
         if (w.ok) {
-          weatherContext = `\n[系统天气上下文，请据此直接回答用户，不要再调用天气工具] ${w.summary}`
+          weatherContext = `\n[系统天气上下文，请据此直接回答用户（开头注明城市名），不要再调用天气工具] ${w.summary}`
           round1Tools = TOOL_DEFS.filter((t) => t.function.name !== WEATHER_TOOL.function.name)
         }
       } catch {
