@@ -1,7 +1,8 @@
 // GET /api/stats
 // 受保护的使用统计汇总：累计独立访客 / 今日各功能调用次数 / 国家 Top10 / 近 7 日趋势。
 // 鉴权：Authorization: Bearer <STATS_API_KEY>（STATS_API_KEY 在 Vercel 环境变量配置）。
-// 未配置 STATS_API_KEY 时一律 401，避免未授权暴露数据。
+// 运行在 Vercel 上时未配置/不匹配一律 401；本地非 Vercel 环境（纯 node / vite 联调）
+// 免鉴权，方便先验证接口与数据。
 import { getSupabase, missingSupabaseEnv } from '../server/supabase.mjs'
 
 export default async function handler(req, res) {
@@ -11,10 +12,13 @@ export default async function handler(req, res) {
     return
   }
 
+  // 本地非 Vercel 环境（如纯 node / vite 本地联调）免鉴权，方便先验证；
+  // 任何 Vercel 部署（VERCEL=1）仍强制 Bearer 校验。
+  const isVercel = !!process.env.VERCEL
   const expected = process.env.STATS_API_KEY
   const m = /^Bearer\s+(.+)$/i.exec(req.headers['authorization'] || '')
   const provided = m ? m[1] : ''
-  if (!expected || provided !== expected) {
+  if (isVercel && (!expected || provided !== expected)) {
     res.writeHead(401, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ error: 'Unauthorized' }))
     return
