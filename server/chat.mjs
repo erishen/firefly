@@ -3,7 +3,7 @@
 // 首轮请求带 tools（当前有 get_weather / query_items）：模型可自行决定何时调用工具。
 // 若模型决定调用 → 本服务端执行对应工具 → 把结果作为 tool 消息回填 →
 // 做第二轮（不带 tools）请求，把最终自然语言回答流式回前端。前端零改动。
-import { BASE, KEY, MODEL, TEMP, proxyAgent, pooledAgent } from './config.mjs'
+import { BASE, KEY, MODEL, TEMP, proxyAgent } from './config.mjs'
 import { readBody, sse, readSSEStream, createLeadingTrimmer, fetchWithTimeout, dbg } from './httpUtils.mjs'
 import { fetchWeather, WEATHER_TOOL } from './weather.mjs'
 import { fetchItems, ITEMS_TOOL } from './items.mjs'
@@ -31,8 +31,8 @@ const ITEMS_INTENT_RE = /商品|清单|报价|怎么收费|收费标准|特价|�
 // 在 handleChat 内按请求上下文（如用户位置 location）闭包构造。
 function buildRunners(location) {
   return {
-    [WEATHER_TOOL.function.name]: (args) => fetchWeather({ ...args, location }, pooledAgent),
-    [ITEMS_TOOL.function.name]: (args) => fetchItems(args, pooledAgent),
+    [WEATHER_TOOL.function.name]: (args) => fetchWeather({ ...args, location }, proxyAgent),
+    [ITEMS_TOOL.function.name]: (args) => fetchItems(args, proxyAgent),
   }
 }
 
@@ -152,7 +152,7 @@ export async function handleChat(req, res) {
   let itemsContext = ''
   if (itemsIntent) {
     try {
-      const it = await fetchItems({}, pooledAgent)
+      const it = await fetchItems({}, proxyAgent)
       if (it.ok) {
         itemsContext = `\n[系统商品/服务上下文，请据此直接回答用户，不要再调用商品工具] ${it.summary}`
         round1Tools = round1Tools.filter((t) => t.function.name !== ITEMS_TOOL.function.name)
@@ -210,6 +210,7 @@ export async function handleChat(req, res) {
 
     let toolCalls = []
     let hasToolCall = false
+    let round1Failed = false
     // 首轮最多重试 1 次（仅当尚未向前端输出任何内容）；fetch 阶段的瞬时中断已由
     // callUpstream 内部重试覆盖，这里兜底「连上后、出首 token 前」的早断。
     const MAX1 = 2
@@ -247,12 +248,34 @@ export async function handleChat(req, res) {
       } catch (e) {
         // 仅当尚未向前端输出任何内容时可安全整轮重试，避免重复 / 截断
         if (attempt < MAX1 - 1 && !wroteHead.v) {
+          dbg('chat', 'round1 retry', e?.name || e?.message)
           await sleep(400 * (attempt + 1))
           continue
         }
-        throw e
+        round1Failed = true
+        break
       }
     }
+
+    // 天气兜底：天气预取已成功拿到数据（weatherContext 非空），但首轮 LLM 在「出任何
+    // 内容前」就中断（网关长流易断，agnes 常见）。此时响应头尚未发出，可直接用预取的
+    // 天气摘要作答，保证「问天气」稳定可用，不再被上游抖动影响。
+    if (round1Failed && !wroteHead.v && weatherContext) {
+      dbg('chat', 'weather-fallback', '用预取天气摘要作答', `${Date.now() - tStart}ms`)
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      })
+      const summary = weatherContext.replace(/^[\s\S]*?\]\s*/, '') // 去掉「[系统天气上下文...]」前缀
+      sse(res, { choices: [{ delta: { content: summary } }] })
+      sse(res, '[DONE]')
+      res.end()
+      return
+    }
+
+    // 非天气或其他失败：抛给外层统一错误处理（产生友好错误帧）
+    if (round1Failed) throw new Error('首轮上游失败')
 
     // 4) 无工具调用 → 首轮即为最终回答，直接结束
     if (!hasToolCall) {

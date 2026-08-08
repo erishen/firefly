@@ -11,7 +11,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { proxyAgent, pooledAgent } from './config.mjs'
+import { proxyAgent } from './config.mjs'
 import { fetchWithTimeout } from './httpUtils.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -58,7 +58,7 @@ function formatItems(items) {
 //   args.keyword   可选，按名称筛选（走 /items/search）
 //   args.limit     返回上限，默认 20，最大 50
 // 返回 { ok, count?, summary?, status?, raw?, error? }
-export async function fetchItems(args = {}, dispatcher = pooledAgent) {
+export async function fetchItems(args = {}, dispatcher = proxyAgent) {
   const keyword = (args.keyword || '').toString().trim()
   let limit = Number(args.limit)
   if (!Number.isFinite(limit) || limit <= 0) limit = 20

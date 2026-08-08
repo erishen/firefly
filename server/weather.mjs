@@ -1,7 +1,7 @@
 // 天气工具（Open-Meteo，免费、无需 API Key、全球覆盖）
 // 流程：先地理编码拿到经纬度，再查实时天气，返回给模型一段结构化简述。
 // 全程在服务端完成，浏览器只看到同源 /api/weather；如需换成需 Key 的提供商，改这里即可。
-import { proxyAgent, pooledAgent } from './config.mjs'
+import { proxyAgent } from './config.mjs'
 import { fetchWithTimeout, dbg } from './httpUtils.mjs'
 
 // 天气/地理编码结果的内存缓存（随同一函数实例存活，Vercel 冷启动会清空，可接受）。
@@ -68,7 +68,7 @@ function wmoText(code) {
 // 优先级：lat/lon → location → city 地理编码。
 // 无 cityName（定位直查场景）则不写城市行，呼应「回复不点名城市」。
 // 返回 { ok, summary?, city?, raw?, error? }
-export async function fetchWeather(args = {}, dispatcher = pooledAgent) {
+export async function fetchWeather(args = {}, dispatcher = proxyAgent) {
   const { city, lat, lon, location } = args
   const t0 = Date.now()
   dbg('weather', 'start', {

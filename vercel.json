@@ -3,5 +3,8 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "regions": ["hkg1"]
+  "regions": ["hkg1"],
+  "functions": {
+    "api/chat.js": { "maxDuration": 60 }
+  }
 }
