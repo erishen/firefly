@@ -6,6 +6,7 @@ import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
 import * as THREE from 'three'
 import { MODEL_CACHE_NAME } from '../utils/modelCache'
 import { useI18n } from '../i18n'
+import { reportModelLoad } from '../utils/telemetry'
 
 // three-vrm 对 VRM0.0 的 LookAtDegreeMap 会打印一条无害警告，屏蔽它避免污染控制台
 if (typeof console !== 'undefined' && console.warn) {
@@ -92,7 +93,7 @@ async function loadModelBytes(url, headers, onProgress) {
     const hit = await cache.match(url)
       if (hit) {
         if (onProgress) onProgress(100)
-        return hit.arrayBuffer()
+        return { buf: await hit.arrayBuffer(), fromCache: true }
       }
   } catch (_) {
     /* Cache API 不可用时跳过缓存，走网络 */
@@ -115,7 +116,7 @@ async function loadModelBytes(url, headers, onProgress) {
   } catch (_) {
     /* 缓存写入失败不影响加载 */
   }
-  return buf
+  return { buf, fromCache: false }
 }
 
 // VRoid (VRM) 模型：本地 public/avatar.vrm
@@ -148,6 +149,8 @@ export default function AvatarVRM({ url, token, speakingRef, blinkRef, onClick }
   useEffect(() => {
     let disposed = false
     let lastReported = -1
+    const t0 = performance.now() // 模型加载计时起点
+    let loadFromCache = false // 本次加载是否命中浏览器缓存
     const report = (p) => {
       if (disposed || p === lastReported) return
       lastReported = p
@@ -164,12 +167,14 @@ export default function AvatarVRM({ url, token, speakingRef, blinkRef, onClick }
     baseEyes.current = []
     const loader = new GLTFLoader()
     loader.register((parser) => new VRMLoaderPlugin(parser))
-    const onLoaded = (gltf) => {
+    const onLoaded = (gltf, fromCache) => {
         if (disposed) return
         const v = gltf.userData.vrm
+        const ms = Math.round(performance.now() - t0)
         if (!v) {
           setError(new Error('该文件不是有效的 VRM（缺少 userData.vrm）'))
           setLoading(false)
+          reportModelLoad({ ok: false, ms, fromCache, url, error: '该文件不是有效的 VRM（缺少 userData.vrm）' })
           return
         }
         VRMUtils.removeUnnecessaryVertices(gltf.scene)
@@ -231,20 +236,23 @@ export default function AvatarVRM({ url, token, speakingRef, blinkRef, onClick }
 
         setVrm(v)
         setLoading(false)
+        reportModelLoad({ ok: true, ms, fromCache, url })
     }
     const onError = (err) => {
       if (!disposed) {
         console.error('[avatar] VRM 加载失败:', err)
         setError(err)
         setLoading(false)
+        reportModelLoad({ ok: false, ms: Math.round(performance.now() - t0), fromCache: loadFromCache, url, error: String(err?.message || err) })
       }
     }
     // 统一走「fetch 字节 + 缓存」：无论是否带令牌、是否跨域，都能复用浏览器缓存秒开。
     const headers = token ? { Authorization: 'Bearer ' + token } : undefined
     loadModelBytes(url, headers, report)
-      .then((buf) => {
+      .then(({ buf, fromCache }) => {
         if (disposed) return
-        loader.parse(buf, '', onLoaded, onError)
+        loadFromCache = fromCache
+        loader.parse(buf, '', (gltf) => onLoaded(gltf, fromCache), onError)
       })
       .catch(onError)
     return () => {

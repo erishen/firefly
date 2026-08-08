@@ -36,17 +36,23 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { data, error } = await supabase.rpc('usage_stats')
+    const [{ data, error }, ml] = await Promise.all([
+      supabase.rpc('usage_stats'),
+      supabase.rpc('model_load_stats').catch((e) => ({ data: null, error: e })),
+    ])
     if (error) {
       res.writeHead(500, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: error.message }))
       return
     }
+    const out = { ...data }
+    if (ml && !ml.error && ml.data) out.model_loads = ml.data
+    else if (ml && ml.error) out.model_loads = { error: ml.error.message }
     res.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
     })
-    res.end(JSON.stringify(data, null, 2))
+    res.end(JSON.stringify(out, null, 2))
   } catch (e) {
     res.writeHead(500, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ error: e?.message || String(e) }))

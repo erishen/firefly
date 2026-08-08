@@ -24,7 +24,7 @@ const REDIS_MAX_LEN = 10000 // 只保留最近 1 万条，防止列表无限增�
 // 懒加载 Upstash Redis：仅当环境变量齐全时才 import + 实例化。
 // 否则返回 null → 自动降级为「仅 console 日志」，绝不拖垮主流程。
 let redisPromise = null
-function getRedis() {
+export function getRedis() {
   if (redisPromise) return redisPromise
   redisPromise = (async () => {
     if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
@@ -52,7 +52,7 @@ function parseCookies(str) {
 
 // 取不透明匿名会话 ID：优先用已有首方 cookie，没有才生成并下发。
 // 该 ID 仅用于去重「独立访客」，首方、HttpOnly、不可跨站，不构成第三方追踪。
-function getAnonSid(req, res) {
+export function getAnonSid(req, res) {
   const cookies = parseCookies(req.headers.cookie || '')
   let sid = cookies[SID_COOKIE]
   if (!sid || !/^[a-f0-9-]{36}$/.test(sid)) {
