@@ -42,7 +42,7 @@ export default async function handler(req, res) {
   try {
     const [{ data, error }, ml] = await Promise.all([
       supabase.rpc('usage_stats'),
-      supabase.rpc('model_load_stats').catch((e) => ({ data: null, error: e })),
+      Promise.resolve(supabase.rpc('model_load_stats')).catch((e) => ({ data: null, error: e })),
     ])
     if (error) {
       res.writeHead(500, { 'Content-Type': 'application/json' })
