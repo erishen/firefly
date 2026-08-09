@@ -325,3 +325,10 @@ By default it reads the **local** `public/avatar.glb` (set in
   rotates eyeballs.
 - **Converged palette**: procedural character colors are centralized in
   `src/theme.js` as the `C` constant.
+
+---
+
+## Related Articles
+
+- English: [Firefly: An R3F 3D Digital Human](https://erishen.cn/firefly-en/)
+- 中文: [Firefly：R3F 3D 数字人](https://erishen.cn/firefly/)

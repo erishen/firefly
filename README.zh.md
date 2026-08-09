@@ -255,3 +255,10 @@ firefly/
 - **离线友好**：去掉了依赖 CDN 字体的 drei `Text`，对话框改用 `Html`（DOM 覆盖层），无 jsdelivr 字体拉取；程序化角色作为兜底完全离线。
 - **真·眼神跟随**：RPM 模型旋转头部/眼骨骼；程序化角色旋转眼球。
 - **配色收敛**：程序化角色颜色集中到 `src/theme.js` 的 `C` 常量。
+
+---
+
+## 相关文章
+
+- 中文: [Firefly：R3F 3D 数字人](https://erishen.cn/firefly/)
+- English: [Firefly: An R3F 3D Digital Human](https://erishen.cn/firefly-en/)
