@@ -259,6 +259,4 @@ firefly/
 ---
 
 ## 相关文章
-
-- 中文: [Firefly：R3F 3D 数字人](https://erishen.cn/firefly/)
-- English: [Firefly: An R3F 3D Digital Human](https://erishen.cn/firefly-en/)
+- [用 React Three Fiber 打造会对话的 3D 数字人：架构与部署的真实踩坑记录](https://erishen.cn/firefly/)

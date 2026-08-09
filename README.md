@@ -329,6 +329,4 @@ By default it reads the **local** `public/avatar.glb` (set in
 ---
 
 ## Related Articles
-
-- English: [Firefly: An R3F 3D Digital Human](https://erishen.cn/firefly-en/)
-- 中文: [Firefly：R3F 3D 数字人](https://erishen.cn/firefly/)
+- [Building a Conversational 3D Avatar with React Three Fiber — Real Architecture and Deployment Lessons](https://erishen.cn/firefly-en/)
