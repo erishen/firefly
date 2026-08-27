@@ -16,3 +16,4 @@ public/fireflyMaid.vrm
 public/test.vrm
 # WorkBuddy 项目内部数据（记忆/日志），不进仓库
 .workbuddy/
+.serena
