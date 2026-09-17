@@ -6,6 +6,10 @@ cursor with its eyes, and can answer questions through an LLM — all running
 in the browser with a thin server-side proxy (local dev) or Vercel Serverless
 Functions (production).
 
+**Live demo:** <https://firefly.erishen.cn> — the avatar, eye tracking, blinking
+and speech bubbles work without any configuration; the free-text chat needs a
+reachable LLM endpoint (see [Configuration](#configuration)).
+
 ## Table of Contents
 
 - [Features](#features)
